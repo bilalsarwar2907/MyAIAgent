@@ -1,0 +1,17 @@
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.exe
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.deps.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.runtimeconfig.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.pdb
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Newtonsoft.Json.dll
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.csproj.AssemblyReference.cache
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.AssemblyInfoInputs.cache
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.AssemblyInfo.cs
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.csproj.CoreCompileInputs.cache
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.csproj.Up2Date
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.dll
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\refint\MyAIAgent.dll
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.pdb
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.genruntimeconfig.cache
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\ref\MyAIAgent.dll
