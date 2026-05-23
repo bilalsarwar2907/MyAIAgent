@@ -19,3 +19,34 @@ The project follows a clean architecture with Models, Services, and a simple Pro
 
 ## 📂 Project Structure
 
+MyAIAgent/
+│
+├── Models/
+│   ├── ChatRequest.cs
+│   └── ChatResponse.cs
+│
+├── Services/
+│   └── AIService.cs
+│
+├── Program.cs
+└── README.md
+
+
+---
+
+## 🛠️ Technologies Used
+
+- .NET 8
+- C#
+- Dependency Injection
+- Async programming
+
+
+---
+
+# 🎉 What to do now
+
+1. Create the file:
+   ```bash
+   nano README.md
+
