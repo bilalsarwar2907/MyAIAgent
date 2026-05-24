@@ -3,11 +3,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MyAIAgent.Models;
 using MyAIAgent.Services;
+using MyAIAgent.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Register services
 builder.Services.AddSingleton<AIService>();
+builder.Services.AddSingleton<NoteTool>();
 
 // Swagger
 builder.Services.AddEndpointsApiExplorer();
@@ -28,7 +30,7 @@ app.MapGet("/health", () =>
     });
 
 // Chat endpoint
-app.MapPost("/chat", async (ChatRequest request, AIService ai) =>
+app.MapPost("/chat", async (ChatRequest request, AIService ai, NoteTool noteTool) =>
 {
     var userMessage = request.messages?
         .LastOrDefault()?.content;
@@ -38,6 +40,18 @@ app.MapPost("/chat", async (ChatRequest request, AIService ai) =>
         return Results.BadRequest(new
         {
             error = "No user message found"
+        });
+    }
+    if (userMessage.StartsWith("save note:"))
+    {
+        var note =
+            userMessage.Replace("save note:", "").Trim();
+
+        noteTool.SaveNote(note);
+
+        return Results.Ok(new
+        {
+            message = "Note saved successfully"
         });
     }
 
