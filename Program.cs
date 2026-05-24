@@ -13,7 +13,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite("Data Source=memory.db"));
 
 // Register services
-builder.Services.AddSingleton<AIService>();
+builder.Services.AddScoped<AIService>();
 builder.Services.AddSingleton<NoteTool>();
 
 // Swagger
@@ -35,42 +35,59 @@ app.MapGet("/health", () =>
     });
 
 // Chat endpoint
-app.MapPost("/chat", async (ChatRequest request, AIService ai, NoteTool noteTool) =>
+//app.MapPost("/chat", async (ChatRequest request, AIService ai, NoteTool noteTool) =>
+//{
+//    var userMessage = request.messages?
+//        .LastOrDefault()?.content;
+//    var lowerMessage = userMessage.ToLower();
+
+//    if (string.IsNullOrWhiteSpace(userMessage))
+//    {
+//        return Results.BadRequest(new
+//        {
+//            error = "No user message found"
+//        });
+//    }
+//    if (
+//    lowerMessage.Contains("remember") ||
+//    lowerMessage.Contains("save this") ||
+//    lowerMessage.Contains("note this")
+//)
+//    {
+//        noteTool.SaveNote(userMessage);
+
+//        return Results.Ok(new
+//        {
+//            message = "AI Agent saved your note automatically."
+//        });
+//    }
+
+//    var reply = await ai.AskAI(userMessage);
+
+//    return Results.Ok(new ChatResponse
+//    {
+//        message = new Message
+//        {
+//            role = "assistant",
+//            content = reply
+//        }
+//    });
+//});
+
+app.MapPost("/chat", async (ChatRequestV2 request, AIService ai) =>
 {
-    var userMessage = request.messages?
-        .LastOrDefault()?.content;
-    var lowerMessage = userMessage.ToLower();
+    if (string.IsNullOrWhiteSpace(request.Message))
+        return Results.BadRequest("Message is empty");
 
-    if (string.IsNullOrWhiteSpace(userMessage))
+    if (string.IsNullOrWhiteSpace(request.ConversationId))
+        return Results.BadRequest("ConversationId is required");
+
+    var reply = await ai.AskAI(request.Message, request.ConversationId);
+
+    return Results.Ok(new
     {
-        return Results.BadRequest(new
-        {
-            error = "No user message found"
-        });
-    }
-    if (
-    lowerMessage.Contains("remember") ||
-    lowerMessage.Contains("save this") ||
-    lowerMessage.Contains("note this")
-)
-    {
-        noteTool.SaveNote(userMessage);
-
-        return Results.Ok(new
-        {
-            message = "AI Agent saved your note automatically."
-        });
-    }
-
-    var reply = await ai.AskAI(userMessage);
-
-    return Results.Ok(new ChatResponse
-    {
-        message = new Message
-        {
-            role = "assistant",
-            content = reply
-        }
+        conversationId = request.ConversationId,
+        message = reply
     });
 });
 

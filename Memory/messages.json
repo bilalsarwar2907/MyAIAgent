@@ -30,5 +30,29 @@
   {
     "role": "assistant",
     "content": "So you have a test or exam on inheritance in programming tomorrow and you'd like to review the concept. What specifically would you like to focus on or clarify about inheritance? Do you have any questions or topics you're struggling with? I'm here to help!"
+  },
+  {
+    "role": "user",
+    "content": "My favorite database is SQLite"
+  },
+  {
+    "role": "assistant",
+    "content": "A great choice, Bil! SQLite is a fantastic lightweight relational database that's perfect for many applications. It's self-contained, file-based, and doesn't require a separate server process, which makes it easy to use and deploy.\n\nWhat do you like most about SQLite? Is there a particular feature or aspect of the database that you enjoy using?"
+  },
+  {
+    "role": "user",
+    "content": "My favorite database is SQLite"
+  },
+  {
+    "role": "assistant",
+    "content": "A great choice, Bil! SQLite is a fantastic lightweight relational database that's perfect for many applications. It's self-contained, file-based, and doesn't require a separate server process, which makes it easy to use and deploy.\n\nWhat do you like most about SQLite? Is there a particular feature or aspect of the database that you enjoy using?"
+  },
+  {
+    "role": "user",
+    "content": "What is my favorite database?"
+  },
+  {
+    "role": "assistant",
+    "content": "I remember! Your favorite database is SQLite, Bil!"
   }
 ]
