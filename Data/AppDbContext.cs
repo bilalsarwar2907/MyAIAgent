@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MyAIAgent.Data
 {
-    internal class AppDbContext : DbContext
+   public class AppDbContext : DbContext
     {
 
         public DbSet<ChatMessage> ChatMessages { get; set; }

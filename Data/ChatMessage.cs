@@ -4,7 +4,7 @@ using System.Text;
 
 namespace MyAIAgent.Data
 {
-    internal class ChatMessage
+    public class ChatMessage
     {
         public int Id { get; set; }
         public string Role { get; set; }= string.Empty;

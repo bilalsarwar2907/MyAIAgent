@@ -1,20 +1,25 @@
 ﻿using MyAIAgent.Models;
 using Newtonsoft.Json;
 using System.Text;
+using MyAIAgent.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace MyAIAgent.Services
 {
     public class AIService
     {
         private readonly HttpClient _httpClient;
+        private readonly AppDbContext _dbContext;
 
         // MEMORY
         private List<Message> _messages = new List<Message>();
         private readonly string _filePath = "Memory/messages.json";
 
-        public AIService()
+        public AIService(AppDbContext dbContext)
         {
+            _dbContext = dbContext;
             _httpClient = new HttpClient();
+           
 
             // Increase timeout for local AI models
             _httpClient.Timeout = TimeSpan.FromMinutes(10);
@@ -44,6 +49,16 @@ Focus on C#, APIs, Razor Pages, SQL, Vue, Python, axios, JavaScript and object-o
                 {
                     _messages = savedMessages;
                 }
+                var oldMessages = _dbContext.ChatMessages.ToList();
+
+                foreach (var msg in oldMessages)
+                {
+                    _messages.Add(new Message
+                    {
+                        role = msg.Role,
+                        content = msg.Content
+                    });
+                }
             }
         }
 
@@ -55,6 +70,13 @@ Focus on C#, APIs, Razor Pages, SQL, Vue, Python, axios, JavaScript and object-o
                 role = "user",
                 content = userMessage
             });
+            _dbContext.ChatMessages.Add(new ChatMessage
+            {
+                Role = "user",
+                Content = userMessage
+            });
+
+            _dbContext.SaveChanges();
 
             var requestBody = new ChatRequest
             {
@@ -99,6 +121,13 @@ Focus on C#, APIs, Razor Pages, SQL, Vue, Python, axios, JavaScript and object-o
 
 
             });
+            _dbContext.ChatMessages.Add(new ChatMessage
+            {
+                Role = "assistant",
+                Content = result.message.content
+            });
+
+            _dbContext.SaveChanges();
             File.WriteAllText
             (
                _filePath,
