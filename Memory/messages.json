@@ -22,5 +22,13 @@
   {
     "role": "assistant",
     "content": "I learned earlier that your name is Bil."
+  },
+  {
+    "role": "user",
+    "content": "Remember that I need to practice inheritance tomorrow"
+  },
+  {
+    "role": "assistant",
+    "content": "So you have a test or exam on inheritance in programming tomorrow and you'd like to review the concept. What specifically would you like to focus on or clarify about inheritance? Do you have any questions or topics you're struggling with? I'm here to help!"
   }
 ]

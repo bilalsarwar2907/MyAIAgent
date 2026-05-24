@@ -34,6 +34,7 @@ app.MapPost("/chat", async (ChatRequest request, AIService ai, NoteTool noteTool
 {
     var userMessage = request.messages?
         .LastOrDefault()?.content;
+    var lowerMessage = userMessage.ToLower();
 
     if (string.IsNullOrWhiteSpace(userMessage))
     {
@@ -42,16 +43,17 @@ app.MapPost("/chat", async (ChatRequest request, AIService ai, NoteTool noteTool
             error = "No user message found"
         });
     }
-    if (userMessage.StartsWith("save note:"))
+    if (
+    lowerMessage.Contains("remember") ||
+    lowerMessage.Contains("save this") ||
+    lowerMessage.Contains("note this")
+)
     {
-        var note =
-            userMessage.Replace("save note:", "").Trim();
-
-        noteTool.SaveNote(note);
+        noteTool.SaveNote(userMessage);
 
         return Results.Ok(new
         {
-            message = "Note saved successfully"
+            message = "AI Agent saved your note automatically."
         });
     }
 
