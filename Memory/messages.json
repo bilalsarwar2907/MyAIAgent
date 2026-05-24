@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "My name is Bil"
+  },
+  {
+    "role": "assistant",
+    "content": "Nice to meet you, Bil! How's your day going so far?"
+  },
+  {
+    "role": "user",
+    "content": "What is my name?"
+  },
+  {
+    "role": "assistant",
+    "content": "Your name is Bil, according to what you told me earlier!"
+  },
+  {
+    "role": "user",
+    "content": "What is my name?"
+  },
+  {
+    "role": "assistant",
+    "content": "I learned earlier that your name is Bil."
+  }
+]

@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MyAIAgent")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+41c9225ce9c6c57d3c9311cce0f99846801ca0ba")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+93609adf3843b47e49ed5cae42badab85a57ecd1")]
 [assembly: System.Reflection.AssemblyProductAttribute("MyAIAgent")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MyAIAgent")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

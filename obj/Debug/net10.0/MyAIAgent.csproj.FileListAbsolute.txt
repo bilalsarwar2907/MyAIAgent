@@ -1,11 +1,15 @@
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.exe
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.dll
-C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.staticwebassets.endpoints.json
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.OpenApi.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Newtonsoft.Json.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Swashbuckle.AspNetCore.Swagger.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerGen.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerUI.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Memory\messages.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.staticwebassets.endpoints.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.deps.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.runtimeconfig.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.pdb
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.csproj.AssemblyReference.cache
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\rpswa.dswa.cache.json
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.GeneratedMSBuildEditorConfig.editorconfig
@@ -29,8 +33,5 @@ C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.csproj.Up2Date
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.dll
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\refint\MyAIAgent.dll
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.pdb
-C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.deps.json
-C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.runtimeconfig.json
-C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.pdb
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.genruntimeconfig.cache
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\ref\MyAIAgent.dll

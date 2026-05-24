@@ -10,6 +10,7 @@ namespace MyAIAgent.Services
 
         // MEMORY
         private List<Message> _messages = new List<Message>();
+        private readonly string _filePath = "Memory/messages.json";
 
         public AIService()
         {
@@ -31,6 +32,19 @@ Explain debugging carefully.
 Use beginner-friendly examples.
 Focus on C#, APIs, Razor Pages, SQL, Vue, Python, axios, JavaScript and object-oriented programming."
             });
+
+            if (File.Exists(_filePath))
+            {
+                var json = File.ReadAllText(_filePath);
+
+                var savedMessages =
+                    JsonConvert.DeserializeObject<List<Message>>(json);
+
+                if (savedMessages != null)
+                {
+                    _messages = savedMessages;
+                }
+            }
         }
 
         public async Task<string> AskAI(string userMessage)
@@ -82,7 +96,14 @@ Focus on C#, APIs, Razor Pages, SQL, Vue, Python, axios, JavaScript and object-o
             {
                 role = "assistant",
                 content = result.message.content
+
+
             });
+            File.WriteAllText
+            (
+               _filePath,
+               JsonConvert.SerializeObject(_messages, Formatting.Indented)
+             );
 
             return result.message.content;
         }
