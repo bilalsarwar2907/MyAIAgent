@@ -118,5 +118,70 @@ Focus on C#, APIs, Razor Pages, SQL, Vue, Python, axios, JavaScript and object-o
             // Return only the AI's message content to the caller.
             return result.message.content;
         }
+        public async Task<ToolResponse> DecideTool(string userMessage)
+        {
+            var prompt = $@"
+You are an AI agent.
+
+Decide whether the user message needs a tool.
+
+Available tools:
+1. SaveNote
+
+Use SaveNote if user wants to remember/save something.
+
+Respond ONLY in JSON.
+
+Example:
+{{
+  ""useTool"": true,
+  ""toolName"": ""SaveNote"",
+  ""toolInput"": ""Practice C#""
+}}
+
+User message:
+{userMessage}
+";
+
+            var requestBody = new
+            {
+                model = "llama3",
+                stream = false,
+                messages = new[]
+                {
+            new
+            {
+                role = "user",
+                content = prompt
+            }
+        }
+            };
+
+            var json = JsonConvert.SerializeObject(requestBody);
+
+            var content = new StringContent
+            (
+                json,
+                Encoding.UTF8,
+                "application/json"
+            );
+
+            var response = await _httpClient.PostAsync
+            (
+                "http://localhost:11434/api/chat",
+                content
+            );
+
+            var responseJson =
+                await response.Content.ReadAsStringAsync();
+
+            dynamic raw =
+                JsonConvert.DeserializeObject(responseJson);
+
+            string aiContent =
+                raw.message.content.ToString();
+
+            return JsonConvert.DeserializeObject<ToolResponse>(aiContent);
+        }
     }
 }

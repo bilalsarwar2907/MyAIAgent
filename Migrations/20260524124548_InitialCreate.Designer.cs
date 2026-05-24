@@ -10,8 +10,8 @@ using MyAIAgent.Data;
 namespace MyAIAgent.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260524093555_InitialCreate1")]
-    partial class InitialCreate1
+    [Migration("20260524124548_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -26,6 +26,10 @@ namespace MyAIAgent.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConversationId")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
