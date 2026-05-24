@@ -1,21 +1,32 @@
-﻿using System;
+﻿using MyAIAgent.Services;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace MyAIAgent.Tools
 {
-    public class NoteTool
+    public class NoteTool : ITool
     {
-        //save notes permanently.
-        private readonly string _notePath = "Memory/notes.txt";
+        public string Name => "SaveNote";
 
-        public void SaveNote(string text)
+        public string Execute(string input)
         {
+            var folder = "Memory";
+
+            if (!Directory.Exists(folder))
+            {
+                Directory.CreateDirectory(folder);
+            }
+
+            var path = Path.Combine(folder, "notes.txt");
+
             File.AppendAllText
             (
-                _notePath,
-                text + Environment.NewLine
+                path,
+                input + Environment.NewLine
             );
+
+            return "Note saved successfully";
         }
     }
 }

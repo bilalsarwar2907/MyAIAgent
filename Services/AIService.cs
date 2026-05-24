@@ -180,8 +180,19 @@ User message:
 
             string aiContent =
                 raw.message.content.ToString();
+            Console.WriteLine(aiContent);
 
-            return JsonConvert.DeserializeObject<ToolResponse>(aiContent);
+            try
+            {
+                return JsonConvert.DeserializeObject<ToolResponse>(aiContent);
+            }
+            catch
+            {
+                return new ToolResponse
+                {
+                    UseTool = false
+                };
+            }
         }
     }
 }

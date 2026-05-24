@@ -20,7 +20,16 @@ C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.Abstrac
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.Design.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.Relational.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.Sqlite.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Caching.Abstractions.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Caching.Memory.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Configuration.Abstractions.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.DependencyInjection.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.DependencyModel.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Logging.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Options.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Primitives.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.OpenApi.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.VisualStudio.SolutionPersistence.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Mono.TextTemplating.dll
@@ -143,6 +152,7 @@ C:\Users\biges\MyAIAgent\obj\Debug\net10.0\staticwebassets.build.json.cache
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\staticwebassets.development.json
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\staticwebassets.build.endpoints.json
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\swae.build.ex.cache
+C:\Users\biges\MyAIAgent\obj\Debug\net10.0\staticwebassets.upToDateCheck.txt
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.csproj.Up2Date
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\MyAIAgent.dll
 C:\Users\biges\MyAIAgent\obj\Debug\net10.0\refint\MyAIAgent.dll
