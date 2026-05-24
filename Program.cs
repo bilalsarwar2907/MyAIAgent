@@ -4,8 +4,13 @@ using Microsoft.Extensions.Hosting;
 using MyAIAgent.Models;
 using MyAIAgent.Services;
 using MyAIAgent.Tools;
+using MyAIAgent.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite("Data Source=memory.db"));
 
 // Register services
 builder.Services.AddSingleton<AIService>();
