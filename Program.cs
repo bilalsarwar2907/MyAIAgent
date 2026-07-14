@@ -9,153 +9,1331 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// =====================
+// DATABASE
+// =====================
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=memory.db"));
+    options.UseSqlite("Data Source=app.db"));
 
-// Register services
+// =====================
+// SERVICES & TOOLS
+// =====================
 builder.Services.AddScoped<AIService>();
-builder.Services.AddSingleton<NoteTool>();
 builder.Services.AddSingleton<ITool, NoteTool>();
+builder.Services.AddSingleton<ITool, StockTool>();
+builder.Services.AddSingleton<ITool, StockAnalysisTool>();
+builder.Services.AddSingleton<ITool, NewsTool>();
+builder.Services.AddSingleton<ITool, BacktestTool>();
+builder.Services.AddSingleton<ITool>(
+    new MyAIAgent.Tools.StockResearchTool(
+        new MyAIAgent.Services.ResearchService(
+            new MyAIAgent.Services.HistoricalDataService())));
 
-// Swagger
+// Volatility factor research
+builder.Services.AddScoped<HistoricalDataService>();
+builder.Services.AddScoped<BacktestEngine>();
+builder.Services.AddScoped<VolatilityFactorService>();
+builder.Services.AddScoped<ScreenerService>();
+builder.Services.AddScoped<PaperPortfolioService>();
+
+// =====================
+// SWAGGER
+// =====================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-var app = builder.Build();
-
-// Swagger middleware
-app.UseSwagger();
-app.UseSwaggerUI();
-
-// Health endpoint
-app.MapGet("/health", () =>
-    new
-    {
-        status = "OK",
-        time = DateTime.UtcNow
-    });
-
-// Chat endpoint
-//app.MapPost("/chat", async (ChatRequest request, AIService ai, NoteTool noteTool) =>
-//{
-//    var userMessage = request.messages?
-//        .LastOrDefault()?.content;
-//    var lowerMessage = userMessage.ToLower();
-
-//    if (string.IsNullOrWhiteSpace(userMessage))
-//    {
-//        return Results.BadRequest(new
-//        {
-//            error = "No user message found"
-//        });
-//    }
-//    if (
-//    lowerMessage.Contains("remember") ||
-//    lowerMessage.Contains("save this") ||
-//    lowerMessage.Contains("note this")
-//)
-//    {
-//        noteTool.SaveNote(userMessage);
-
-//        return Results.Ok(new
-//        {
-//            message = "AI Agent saved your note automatically."
-//        });
-//    }
-
-//    var reply = await ai.AskAI(userMessage);
-
-//    return Results.Ok(new ChatResponse
-//    {
-//        message = new Message
-//        {
-//            role = "assistant",
-//            content = reply
-//        }
-//    });
-//});
-
-app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITool> tools) =>
+// =====================
+// CORS
+// =====================
+builder.Services.AddCors(options =>
 {
-    // Validate inputs
-    if (string.IsNullOrWhiteSpace(request.Message))
-        return Results.BadRequest("Message is empty");
-
-    if (string.IsNullOrWhiteSpace(request.ConversationId))
-        return Results.BadRequest("ConversationId is required");
-
-    // STEP 97 & 98: Dynamic tool decision and execution
-    // The AI decides which tool (if any) to use based on the user's message.
-    var toolDecision = await ai.DecideTool(request.Message);
-
-    if (toolDecision.UseTool)
+    options.AddPolicy("VueClient", policy =>
     {
-        // STEP 98: Replace hardcoded tool name check with dynamic lookup
-        // Find the tool that matches the name returned by the AI
-        var tool = tools.FirstOrDefault(t => t.Name == toolDecision.ToolName);
-
-        if (tool != null)
+        policy.SetIsOriginAllowed(origin =>
         {
-            // Execute the found tool with the input provided by the AI
-            var result = tool.Execute(toolDecision.ToolInput);
-
-            // Return success response indicating which tool was used
-            return Results.Ok(new
-            {
-                toolUsed = true,
-                tool = tool.Name,
-                result = result
-            });
-        }
-        // Optional: handle case where tool name is invalid or not found
-        // For now, we fall through to the regular AI reply
-    }
-
-    // No tool used – get a normal AI response
-    var reply = await ai.AskAI(request.Message, request.ConversationId);
-
-    return Results.Ok(new
-    {
-        conversationId = request.ConversationId,
-        message = reply
+            var uri = new Uri(origin);
+            return uri.Host == "localhost" || uri.Host == "127.0.0.1";
+        })
+        .AllowAnyHeader()
+        .AllowAnyMethod();
     });
 });
 
+var app = builder.Build();
+
+// Auto-create tables on startup
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();
+}
+
+app.UseCors("VueClient");
+app.UseSwagger();
+app.UseSwaggerUI();
+
+// =====================
+// HEALTH CHECK
+// =====================
+app.MapGet("/health", () => new { status = "OK", time = DateTime.UtcNow });
+
+// =====================
+// REGISTER
+// =====================
+app.MapPost("/register", async (RegisterRequest request, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrWhiteSpace(request.Password))
+        return Results.BadRequest("Username and password are required.");
+
+    var existingUser = db.Users.FirstOrDefault(x => x.UserName == request.UserName);
+    if (existingUser != null)
+        return Results.BadRequest("Username already exists.");
+
+    db.Users.Add(new User { UserName = request.UserName, Password = request.Password });
+    await db.SaveChangesAsync();
+    return Results.Ok("User registered successfully.");
+});
+
+// =====================
+// LOGIN
+// =====================
+app.MapPost("/login", async (LoginRequest request, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+        return Results.BadRequest("Username and password are required.");
+
+    var user = db.Users.FirstOrDefault(
+        x => x.UserName == request.Username && x.Password == request.Password);
+
+    if (user == null) return Results.Unauthorized();
+    return Results.Ok(new { message = "Login successful.", userName = user.UserName });
+});
+
+// =====================
+// WATCHLIST
+// =====================
+app.MapGet("/watchlist/{userName}", (string userName, AppDbContext db) =>
+{
+    var items = db.WatchlistItems
+        .Where(x => x.UserName == userName)
+        .OrderByDescending(x => x.AddedAt)
+        .ToList();
+    return Results.Ok(items);
+});
+
+app.MapPost("/watchlist", async (WatchlistItem item, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(item.UserName) || string.IsNullOrWhiteSpace(item.Symbol))
+        return Results.BadRequest("UserName and Symbol are required.");
+
+    var exists = db.WatchlistItems.Any(
+        x => x.UserName == item.UserName && x.Symbol == item.Symbol.ToUpper());
+    if (exists)
+        return Results.BadRequest(item.Symbol.ToUpper() + " is already in your watchlist.");
+
+    item.Symbol = item.Symbol.ToUpper();
+    item.AddedAt = DateTime.UtcNow;
+    db.WatchlistItems.Add(item);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = item.Symbol + " added to watchlist.", item });
+});
+
+app.MapDelete("/watchlist/{id}", async (int id, AppDbContext db) =>
+{
+    var item = db.WatchlistItems.FirstOrDefault(x => x.Id == id);
+    if (item == null) return Results.NotFound("Item not found.");
+    db.WatchlistItems.Remove(item);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = item.Symbol + " removed from watchlist." });
+});
+
+// =====================
+// PORTFOLIO
+// =====================
+app.MapGet("/portfolio/{userName}", (string userName, AppDbContext db) =>
+{
+    var items = db.PortfolioItems
+        .Where(x => x.UserName == userName)
+        .OrderByDescending(x => x.BoughtAt)
+        .ToList();
+    return Results.Ok(items);
+});
+
+app.MapPost("/portfolio", async (PortfolioItem item, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(item.UserName) || string.IsNullOrWhiteSpace(item.Symbol))
+        return Results.BadRequest("UserName and Symbol are required.");
+    if (item.Shares <= 0) return Results.BadRequest("Shares must be greater than 0.");
+    if (item.BuyPrice <= 0) return Results.BadRequest("Buy price must be greater than 0.");
+
+    item.Symbol = item.Symbol.ToUpper();
+    item.BoughtAt = DateTime.UtcNow;
+    db.PortfolioItems.Add(item);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = item.Symbol + " added to portfolio.", item });
+});
+
+app.MapDelete("/portfolio/{id}", async (int id, AppDbContext db) =>
+{
+    var item = db.PortfolioItems.FirstOrDefault(x => x.Id == id);
+    if (item == null) return Results.NotFound("Item not found.");
+    db.PortfolioItems.Remove(item);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = item.Symbol + " removed from portfolio." });
+});
+
+// =====================
+// PRICE ALERTS — GET all alerts for a user
+// =====================
+app.MapGet("/alerts/{userName}", (string userName, AppDbContext db) =>
+{
+    var alerts = db.PriceAlerts
+        .Where(x => x.UserName == userName)
+        .OrderByDescending(x => x.CreatedAt)
+        .ToList();
+    return Results.Ok(alerts);
+});
+
+// =====================
+// PRICE ALERTS — CREATE a new alert
+// =====================
+app.MapPost("/alerts", async (PriceAlert alert, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(alert.UserName) || string.IsNullOrWhiteSpace(alert.Symbol))
+        return Results.BadRequest("UserName and Symbol are required.");
+
+    if (alert.TargetPrice <= 0)
+        return Results.BadRequest("Target price must be greater than 0.");
+
+    if (alert.Direction != "above" && alert.Direction != "below")
+        return Results.BadRequest("Direction must be 'above' or 'below'.");
+
+    alert.Symbol = alert.Symbol.ToUpper();
+    alert.CreatedAt = DateTime.UtcNow;
+    alert.IsTriggered = false;
+
+    db.PriceAlerts.Add(alert);
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { message = "Alert created for " + alert.Symbol, alert });
+});
+
+// =====================
+// PRICE ALERTS — DELETE an alert
+// =====================
+app.MapDelete("/alerts/{id}", async (int id, AppDbContext db) =>
+{
+    var alert = db.PriceAlerts.FirstOrDefault(x => x.Id == id);
+    if (alert == null) return Results.NotFound("Alert not found.");
+    db.PriceAlerts.Remove(alert);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Alert removed." });
+});
+
+// =====================
+// PRICE ALERTS — CHECK all alerts against live prices
+// Call this from frontend periodically (e.g. every 60s)
+// =====================
+app.MapPost("/alerts/check/{userName}", async (string userName, AppDbContext db, IEnumerable<ITool> tools) =>
+{
+    var stockTool = tools.FirstOrDefault(t => t.Name == "GetStockPrice");
+    if (stockTool == null) return Results.Problem("Stock tool not available.");
+
+    var activeAlerts = db.PriceAlerts
+        .Where(x => x.UserName == userName && !x.IsTriggered)
+        .ToList();
+
+    var newlyTriggered = new List<PriceAlert>();
+
+    // Group by symbol to avoid duplicate API calls for the same stock
+    var symbolGroups = activeAlerts.GroupBy(a => a.Symbol);
+
+    foreach (var group in symbolGroups)
+    {
+        var symbol = group.Key;
+        var raw = stockTool.Execute(symbol);
+
+        // Extract price from formatted string "💰 Price: $291.13"
+        var match = System.Text.RegularExpressions.Regex.Match(raw, @"Price:\s*\$?([\d.]+)");
+        if (!match.Success) continue;
+
+        var currentPrice = decimal.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+        foreach (var alert in group)
+        {
+            bool shouldTrigger =
+                (alert.Direction == "above" && currentPrice >= alert.TargetPrice) ||
+                (alert.Direction == "below" && currentPrice <= alert.TargetPrice);
+
+            if (shouldTrigger)
+            {
+                alert.IsTriggered = true;
+                alert.TriggeredPrice = currentPrice;
+                alert.TriggeredAt = DateTime.UtcNow;
+                newlyTriggered.Add(alert);
+            }
+        }
+
+        // Small delay between API calls to respect rate limits
+        await Task.Delay(1200);
+    }
+
+    if (newlyTriggered.Count > 0)
+    {
+        await db.SaveChangesAsync();
+    }
+
+    return Results.Ok(new
+    {
+        alertsChecked = activeAlerts.Count,
+        triggered = newlyTriggered
+    });
+});
+//====================================
+//QUCIK DECISION ON A STOCK IN A TABLE
+//====================================
+app.MapGet("/decision/{symbol}", (string symbol, IEnumerable<ITool> tools) =>
+{
+    var analysisTool = tools.FirstOrDefault(t => t.Name == "AnalyzeStock") as StockAnalysisTool;
+    if (analysisTool == null) return Results.Problem("Analysis tool not available.");
+
+    var table = analysisTool.BuildDecisionTable(symbol.Trim().ToUpper());
+    return Results.Ok(table);
+});
+
+//============================
+// QUICK NEWS HEADLINES
+//============================
+app.MapGet("/news/{symbol}", (string symbol, IEnumerable<ITool> tools) =>
+{
+    var newsTool = tools.FirstOrDefault(t => t.Name == "GetStockNews");
+    if (newsTool == null) return Results.Problem("News tool not available.");
+    var result = newsTool.Execute(symbol);
+    return Results.Ok(new { symbol = symbol.ToUpper(), result });
+});
+
+// ========================
+// HISTORICAL BACKTEST ENGINE (Stooq-free, no 25/day cap)
+// ========================
+var historicalData = new MyAIAgent.Services.HistoricalDataService();
+var backtestEngine = new MyAIAgent.Services.BacktestEngine(historicalData);
+
+// GET /backtest/large
+// Runs all 60 symbols across 10 sectors — no trend filter.
+app.MapGet("/backtest/large", async () =>
+{
+    var summary = await backtestEngine.RunBatchAsync(StockUniverse.All);
+    return Results.Text(backtestEngine.FormatReport(summary), "text/plain");
+});
+
+// GET /backtest/large-filtered
+// Same 60 symbols with 200-day MA trend filter (Experiment B).
+// Skips RSI<30 entries when price is above the 200-day MA.
+// Compare output against /backtest/large to measure the filter's effect.
+app.MapGet("/backtest/large-filtered", async () =>
+{
+    var summary = await backtestEngine.RunBatchAsync(StockUniverse.All, useTrendFilter: true);
+    return Results.Text(backtestEngine.FormatReport(summary), "text/plain");
+});
+
+// ========================
+// MULTI-PERIOD VALIDATION ENDPOINTS
+// Run the same 59 stocks on a custom date range (e.g. 2006–2016)
+// to check if the Airlines/Energy pattern holds in a different market regime.
+// ========================
+
+// GET /backtest/period/{fromYear}/{toYear}
+// Example: GET http://localhost:60363/backtest/period/2006/2016
+app.MapGet("/backtest/period/{fromYear}/{toYear}", async (int fromYear, int toYear) =>
+{
+    var from = new DateTime(fromYear, 1, 1);
+    var to = new DateTime(toYear, 12, 31);
+    var summary = await backtestEngine.RunBatchRangeAsync(StockUniverse.All, from, to);
+    return Results.Text(backtestEngine.FormatReport(summary), "text/plain");
+});
+
+// GET /backtest/period/{fromYear}/{toYear}/sector/{sectorName}
+// Example: GET http://localhost:60363/backtest/period/2006/2016/sector/airlines
+app.MapGet("/backtest/period/{fromYear}/{toYear}/sector/{sectorName}",
+    async (int fromYear, int toYear, string sectorName) =>
+    {
+        if (!StockUniverse.BySector.TryGetValue(sectorName.ToLower(), out var symbols))
+            return Results.Text(
+                $"Unknown sector '{sectorName}'. Available: {string.Join(", ", StockUniverse.BySector.Keys)}",
+                "text/plain");
+
+        var from = new DateTime(fromYear, 1, 1);
+        var to = new DateTime(toYear, 12, 31);
+        var summary = await backtestEngine.RunBatchRangeAsync(symbols, from, to);
+        return Results.Text(backtestEngine.FormatReport(summary), "text/plain");
+    });
+
+// GET /backtest/sector-v2/{sectorName}
+// Available sectors: tech, banks, auto, pharma, energy, retail, utilities, reits, airlines, industrial
+// Append ?filtered=true to run with the 200-day MA trend filter.
+app.MapGet("/backtest/sector-v2/{sectorName}", async (string sectorName, bool filtered = false) =>
+{
+    if (!StockUniverse.BySector.TryGetValue(sectorName.ToLower(), out var symbols))
+        return Results.Text(
+            $"Unknown sector '{sectorName}'. Available: {string.Join(", ", StockUniverse.BySector.Keys)}",
+            "text/plain");
+
+    var summary = await backtestEngine.RunBatchAsync(symbols, useTrendFilter: filtered);
+    return Results.Text(backtestEngine.FormatReport(summary), "text/plain");
+});
+
+// ========================
+// LEGACY BACKTEST (Alpha Vantage, ~100 days, 25 req/day cap)
+// Keep these for the AI chat tools — they still use Alpha Vantage for live signals.
+// ========================
+app.MapGet("/backtest/{symbol}", (string symbol, IEnumerable<ITool> tools) =>
+{
+    var backtestTool = tools.FirstOrDefault(t => t.Name == "BacktestStrategy");
+    if (backtestTool == null) return Results.Problem("Backtest tool not available.");
+    return Results.Ok(new { symbol = symbol.ToUpper(), result = backtestTool.Execute(symbol) });
+});
+
+app.MapGet("/backtest/sector/{sectorName}", (string sectorName, IEnumerable<ITool> tools) =>
+{
+    var backtestTool = tools.FirstOrDefault(t => t.Name == "BacktestStrategy") as BacktestTool;
+    if (backtestTool == null) return Results.Problem("Backtest tool not available.");
+    return Results.Ok(new { sector = sectorName, result = backtestTool.ExecuteSector(sectorName) });
+});
+
+// ========================
+// RESEARCH PLATFORM ENDPOINTS
+// Add these alongside your existing backtest endpoints in Program.cs.
+// ========================
+
+var researchService = new MyAIAgent.Services.ResearchService(historicalData);
+// Note: historicalData is already declared above with the backtest endpoints —
+// don't declare it again. researchService reuses the same instance.
+
+// GET /research/{symbol}
+// Plain-text strategy comparison report for a single symbol.
+// Example: GET http://localhost:60363/research/AAPL
+// Example: GET http://localhost:60363/research/XOM
+app.MapGet("/research/{symbol}", async (string symbol) =>
+{
+    var strategies = new List<MyAIAgent.Services.IStrategy>
+    {
+        new MyAIAgent.Services.RsiStrategy(30, 70),
+        new MyAIAgent.Services.RsiStrategy(30, 70, trendFilter: true)
+    };
+
+    var report = await researchService.RunResearchAsync(symbol, strategies);
+    return Results.Text(researchService.FormatReport(report), "text/plain");
+});
+
+// GET /research/{symbol}/explain
+// Runs the same research as /research/{symbol} and pipes the structured
+// data into AIService.InterpretResearch, returning a plain-English explanation.
+// Called by the "Explain these results" button in ResearchPanel.
+// Does NOT touch conversation history -- no sidebar pollution.
+app.MapGet("/research/{symbol}/explain", async (string symbol, AIService ai, IEnumerable<ITool> tools) =>
+{
+    var strategies = new List<MyAIAgent.Services.IStrategy>
+    {
+        new MyAIAgent.Services.RsiStrategy(30, 70),
+        new MyAIAgent.Services.RsiStrategy(30, 70, trendFilter: true)
+    };
+
+    var report = await researchService.RunResearchAsync(symbol, strategies);
+
+    if (!string.IsNullOrEmpty(report.Error))
+        return Results.Json(new { error = report.Error });
+
+    var researchTool = tools.FirstOrDefault(t => t.Name == "ResearchStock") as MyAIAgent.Tools.StockResearchTool;
+    var prompt = researchTool != null
+        ? researchTool.Execute(symbol)
+        : researchService.FormatForAI(report);
+
+    var explanation = await ai.InterpretResearch(prompt);
+    return Results.Json(new { symbol = symbol.ToUpper(), explanation });
+});
+
+// GET /research/batch/{sector}
+// Research report for a full sector â all symbols side by side.
+// Example: GET http://localhost:60363/research/batch/energy
+app.MapGet("/research/batch/{sector}", async (string sector) =>
+{
+    if (!MyAIAgent.Services.StockUniverse.BySector.TryGetValue(sector.ToLower(), out var symbols))
+        return Results.Text(
+            $"Unknown sector '{sector}'. Available: {string.Join(", ", MyAIAgent.Services.StockUniverse.BySector.Keys)}",
+            "text/plain");
+
+    var strategies = new List<MyAIAgent.Services.IStrategy>
+    {
+        new MyAIAgent.Services.RsiStrategy(30, 70),
+        new MyAIAgent.Services.RsiStrategy(30, 70, trendFilter: true)
+    };
+
+    var sb = new System.Text.StringBuilder();
+    foreach (var symbol in symbols)
+    {
+        var report = await researchService.RunResearchAsync(symbol, strategies);
+        sb.AppendLine(researchService.FormatReport(report));
+        sb.AppendLine(new string('─', 60));
+    }
+
+    return Results.Text(sb.ToString(), "text/plain");
+});
+// ========================
+// SECTOR RESEARCH ENDPOINTS
+// Add to Program.cs alongside the existing /research endpoints.
+// Uses the same researchService and historicalData already declared above.
+// ========================
+
+// GET /research/sector/{sectorName}
+// Aggregates research results for all stocks in a sector.
+// Returns a structured JSON summary — consumed by SectorResearchPanel.vue.
+// Example: GET http://localhost:60363/research/sector/energy
+app.MapGet("/research/sector/{sectorName}", async (string sectorName) =>
+{
+    if (!MyAIAgent.Services.StockUniverse.BySector.TryGetValue(sectorName.ToLower(), out var symbols))
+        return Results.Json(new { error = $"Unknown sector '{sectorName}'. Available: {string.Join(", ", MyAIAgent.Services.StockUniverse.BySector.Keys)}" });
+
+    var strategies = new List<MyAIAgent.Services.IStrategy>
+    {
+        new MyAIAgent.Services.RsiStrategy(30, 70),
+        new MyAIAgent.Services.RsiStrategy(30, 70, trendFilter: true)
+    };
+
+    var perSymbol = new List<object>();
+    int beatCount = 0;
+    var advantages = new List<decimal>();
+
+    foreach (var symbol in symbols)
+    {
+        var report = await researchService.RunResearchAsync(symbol, strategies);
+        if (!string.IsNullOrEmpty(report.Error)) continue;
+
+        var baseline = report.Results.FirstOrDefault(r => r.Verdict == "Baseline");
+        var best = report.Results
+            .Where(r => r.Verdict != "Baseline")
+            .OrderByDescending(r => r.TotalReturnPercent)
+            .FirstOrDefault();
+
+        if (baseline == null || best == null) continue;
+
+        decimal advantage = Math.Round(best.TotalReturnPercent - baseline.TotalReturnPercent, 2);
+        bool beat = best.TotalReturnPercent > baseline.TotalReturnPercent;
+        if (beat) beatCount++;
+        advantages.Add(advantage);
+
+        perSymbol.Add(new
+        {
+            symbol,
+            bahReturn = Math.Round(baseline.TotalReturnPercent, 2),
+            bestStrategy = best.StrategyName,
+            stratReturn = Math.Round(best.TotalReturnPercent, 2),
+            advantage,
+            beat,
+            trades = best.TotalTrades,
+            winRate = best.WinRate,
+            maxDrawdown = best.MaxDrawdownPercent
+        });
+    }
+
+    // Median helper
+    decimal medianAdvantage = 0;
+    if (advantages.Count > 0)
+    {
+        var sorted = advantages.OrderBy(x => x).ToList();
+        int mid = sorted.Count / 2;
+        medianAdvantage = sorted.Count % 2 != 0
+            ? sorted[mid]
+            : Math.Round((sorted[mid - 1] + sorted[mid]) / 2, 2);
+    }
+
+    return Results.Json(new
+    {
+        sector = sectorName,
+        symbolsTested = perSymbol.Count,
+        beatCount,
+        medianAdvantage,
+        verdict = medianAdvantage >= 0 && beatCount >= perSymbol.Count / 2
+                            ? "Outperformed Benchmark"
+                            : "Underperformed Benchmark",
+        perSymbol
+    });
+});
+
+// GET /research/all-sectors
+// Runs every sector and returns an aggregated summary table.
+// Used by SectorResearchPanel.vue for the full market overview.
+// Takes ~3-4 minutes for all 10 sectors × 6 stocks. Run once, cache mentally.
+app.MapGet("/research/all-sectors", async () =>
+{
+    var strategies = new List<MyAIAgent.Services.IStrategy>
+    {
+        new MyAIAgent.Services.RsiStrategy(30, 70),
+        new MyAIAgent.Services.RsiStrategy(30, 70, trendFilter: true)
+    };
+
+    var sectorSummaries = new List<object>();
+
+    foreach (var (sector, symbols) in MyAIAgent.Services.StockUniverse.BySector)
+    {
+        int beatCount = 0;
+        var advantages = new List<decimal>();
+        string bestSymbol = "", worstSymbol = "";
+        decimal bestAdv = decimal.MinValue, worstAdv = decimal.MaxValue;
+
+        foreach (var symbol in symbols)
+        {
+            var report = await researchService.RunResearchAsync(symbol, strategies);
+            if (!string.IsNullOrEmpty(report.Error)) continue;
+
+            var baseline = report.Results.FirstOrDefault(r => r.Verdict == "Baseline");
+            var best = report.Results
+                .Where(r => r.Verdict != "Baseline")
+                .OrderByDescending(r => r.TotalReturnPercent)
+                .FirstOrDefault();
+
+            if (baseline == null || best == null) continue;
+
+            decimal adv = Math.Round(best.TotalReturnPercent - baseline.TotalReturnPercent, 2);
+            if (best.TotalReturnPercent > baseline.TotalReturnPercent) beatCount++;
+            advantages.Add(adv);
+
+            if (adv > bestAdv) { bestAdv = adv; bestSymbol = symbol; }
+            if (adv < worstAdv) { worstAdv = adv; worstSymbol = symbol; }
+        }
+
+        decimal median = 0;
+        if (advantages.Count > 0)
+        {
+            var sorted = advantages.OrderBy(x => x).ToList();
+            int mid = sorted.Count / 2;
+            median = sorted.Count % 2 != 0
+                ? sorted[mid]
+                : Math.Round((sorted[mid - 1] + sorted[mid]) / 2, 2);
+        }
+
+        sectorSummaries.Add(new
+        {
+            sector,
+            symbolsTested = advantages.Count,
+            beatCount,
+            medianAdvantage = median,
+            verdict = median >= 0 && beatCount >= advantages.Count / 2
+                                ? "Outperformed"
+                                : "Underperformed",
+            bestSymbol,
+            bestAdvantage = bestAdv == decimal.MinValue ? 0 : bestAdv,
+            worstSymbol,
+            worstAdvantage = worstAdv == decimal.MaxValue ? 0 : worstAdv
+        });
+    }
+
+    return Results.Json(new
+    {
+        sectorsRun = sectorSummaries.Count,
+        generatedAt = DateTime.UtcNow,
+        sectors = sectorSummaries.OrderByDescending(s => ((dynamic)s).medianAdvantage)
+    });
+});
+// ========================
+// FACTOR RESEARCH — TREND STRENGTH
+// Tests whether buy-and-hold return (proxy for trend strength)
+// predicts RSI strategy success.
+// Hypothesis: RSI works better on weak-trend stocks than strong-trend stocks.
+// GET /research/factor/trend-strength
+// ========================
+app.MapGet("/research/factor/trend-strength", async () =>
+{
+    var strategies = new List<MyAIAgent.Services.IStrategy>
+    {
+        new MyAIAgent.Services.RsiStrategy(30, 70)
+    };
+
+    var perStock = new List<object>();
+
+    foreach (var symbol in MyAIAgent.Services.StockUniverse.All)
+    {
+        var report = await researchService.RunResearchAsync(symbol, strategies);
+        if (!string.IsNullOrEmpty(report.Error)) continue;
+
+        var baseline = report.Results.FirstOrDefault(r => r.Verdict == "Baseline");
+        var rsi = report.Results.FirstOrDefault(r => r.Verdict != "Baseline");
+        if (baseline == null || rsi == null) continue;
+
+        decimal bahReturn = baseline.TotalReturnPercent;
+        decimal rsiReturn = rsi.TotalReturnPercent;
+        decimal advantage = Math.Round(rsiReturn - bahReturn, 2);
+        bool beat = rsiReturn > bahReturn;
+
+        // Trend bucket based on buy-and-hold return over the 10y period
+        string trendBucket = bahReturn < 100 ? "Weak (<100%)"
+                           : bahReturn < 300 ? "Medium (100–300%)"
+                                              : "Strong (>300%)";
+
+        perStock.Add(new
+        {
+            symbol,
+            bahReturn = Math.Round(bahReturn, 1),
+            rsiReturn = Math.Round(rsiReturn, 1),
+            advantage,
+            beat,
+            trendBucket,
+            trades = rsi.TotalTrades,
+            winRate = rsi.WinRate
+        });
+    }
+
+    // Group into buckets and compute stats
+    var buckets = new[] { "Weak (<100%)", "Medium (100–300%)", "Strong (>300%)" };
+    var bucketStats = buckets.Select(bucket =>
+    {
+        var stocks = perStock.Cast<dynamic>().Where(s => s.trendBucket == bucket).ToList();
+        if (!stocks.Any()) return null;
+
+        int total = stocks.Count;
+        int beatCount = stocks.Count(s => (bool)s.beat);
+        var advList = stocks.Select(s => (decimal)s.advantage).OrderBy(x => x).ToList();
+        int mid = advList.Count / 2;
+        decimal median = advList.Count % 2 != 0
+            ? advList[mid]
+            : Math.Round((advList[mid - 1] + advList[mid]) / 2, 1);
+
+        return (object)new
+        {
+            bucket,
+            total,
+            beatCount,
+            beatRate = Math.Round((decimal)beatCount / total * 100, 1),
+            medianAdvantage = median
+        };
+    }).Where(b => b != null).ToList();
+
+    return Results.Json(new
+    {
+        hypothesis = "RSI mean-reversion works better on weak-trend stocks than strong-trend stocks",
+        totalStocks = perStock.Count,
+        generatedAt = DateTime.UtcNow,
+        buckets = bucketStats,
+        perStock = perStock.Cast<dynamic>()
+                        .OrderBy(s => (decimal)s.bahReturn)
+                        .ToList()
+    });
+});
+// ========================
+// FACTOR RESEARCH — TREND STRENGTH (DATE RANGE)
+// Same as /research/factor/trend-strength but for a custom period.
+// Used for multi-period validation of the trend strength factor.
+// GET /research/factor/trend-strength/{fromYear}/{toYear}
+// Example: GET /research/factor/trend-strength/2006/2016
+// ========================
+app.MapGet("/research/factor/trend-strength/{fromYear}/{toYear}",
+    async (int fromYear, int toYear) =>
+    {
+        var from = new DateTime(fromYear, 1, 1);
+        var to = new DateTime(toYear, 12, 31);
+
+        var strategies = new List<MyAIAgent.Services.IStrategy>
+    {
+        new MyAIAgent.Services.RsiStrategy(30, 70)
+    };
+
+        var perStock = new List<object>();
+
+        foreach (var symbol in MyAIAgent.Services.StockUniverse.All)
+        {
+            List<MyAIAgent.Services.DailyBar> bars;
+            try { bars = await historicalData.GetDailyHistoryRangeAsync(symbol, from, to); }
+            catch { continue; }
+
+            if (bars.Count < 60) continue;
+
+            // Run buy-and-hold manually on the range bars
+            var firstPrice = bars.First().Close;
+            var lastPrice = bars.Last().Close;
+            decimal bahReturn = Math.Round(((lastPrice - firstPrice) / firstPrice) * 100, 2);
+
+            // Run RSI strategy on range bars
+            var rsiStrategy = new MyAIAgent.Services.RsiStrategy(30, 70);
+            var trades = rsiStrategy.Run(bars);
+
+            decimal equity = 1;
+            foreach (var t in trades)
+                equity *= (1 + t.ReturnPercent / 100);
+            decimal rsiReturn = Math.Round((equity - 1) * 100, 2);
+            decimal advantage = Math.Round(rsiReturn - bahReturn, 2);
+            bool beat = rsiReturn > bahReturn;
+
+            string trendBucket = bahReturn < 100 ? "Weak (<100%)"
+                               : bahReturn < 300 ? "Medium (100–300%)"
+                                                  : "Strong (>300%)";
+
+            perStock.Add(new
+            {
+                symbol,
+                bahReturn,
+                rsiReturn,
+                advantage,
+                beat,
+                trendBucket,
+                trades = trades.Count,
+                winRate = trades.Count > 0
+                    ? Math.Round((decimal)trades.Count(t => t.ReturnPercent > 0) / trades.Count * 100, 1)
+                    : 0
+            });
+        }
+
+        var buckets = new[] { "Weak (<100%)", "Medium (100–300%)", "Strong (>300%)" };
+        var bucketStats = buckets.Select(bucket =>
+        {
+            var stocks = perStock.Cast<dynamic>().Where(s => s.trendBucket == bucket).ToList();
+            if (!stocks.Any()) return null;
+
+            int total = stocks.Count;
+            int beatCount = stocks.Count(s => (bool)s.beat);
+            var advList = stocks.Select(s => (decimal)s.advantage).OrderBy(x => x).ToList();
+            int mid = advList.Count / 2;
+            decimal median = advList.Count % 2 != 0
+                ? advList[mid]
+                : Math.Round((advList[mid - 1] + advList[mid]) / 2, 1);
+
+            return (object)new
+            {
+                bucket,
+                total,
+                beatCount,
+                beatRate = Math.Round((decimal)beatCount / total * 100, 1),
+                medianAdvantage = median
+            };
+        }).Where(b => b != null).ToList();
+
+        return Results.Json(new
+        {
+            hypothesis = "RSI mean-reversion works better on weak-trend stocks than strong-trend stocks",
+            period = $"{fromYear}–{toYear}",
+            totalStocks = perStock.Count,
+            generatedAt = DateTime.UtcNow,
+            buckets = bucketStats,
+            perStock = perStock.Cast<dynamic>()
+                            .OrderBy(s => (decimal)s.bahReturn)
+                            .ToList()
+        });
+    });
+
+// Register StockResearchTool so the AI chat can call it too.
+// Add "new StockResearchTool(researchService)" to wherever you build your
+// tools list in Program.cs — same pattern as StockTool and StockAnalysisTool.
+
+// ========================
+// QUICK STOCK PRICE
+// ========================
+app.MapGet("/stock/{symbol}", (string symbol, IEnumerable<ITool> tools) =>
+{
+    var stockTool = tools.FirstOrDefault(t => t.Name == "GetStockPrice");
+    if (stockTool == null) return Results.Problem("Stock tool not available.");
+    return Results.Ok(new { symbol = symbol.ToUpper(), result = stockTool.Execute(symbol) });
+});
+// =====================
+// DEEP STOCK ANALYSIS
+// =====================
+app.MapPost("/analyze", async (AnalyzeRequest request, AIService ai, IEnumerable<ITool> tools) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Symbols))
+        return Results.BadRequest("Symbols are required.");
+
+    var analysisTool = tools.FirstOrDefault(t => t.Name == "AnalyzeStock");
+    if (analysisTool == null) return Results.Problem("Analysis tool not available.");
+
+    var stockData = analysisTool.Execute(request.Symbols);
+    var userQuestion = string.IsNullOrWhiteSpace(request.Question)
+        ? "Analyze these stocks and tell me which looks strongest right now."
+        : request.Question;
+
+    try
+    {
+        var analysis = await ai.AnalyzeStocks(stockData, userQuestion);
+        return Results.Ok(new { symbols = request.Symbols.ToUpper(), rawData = stockData, analysis });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem("Analysis error: " + ex.Message);
+    }
+});
+
+// =====================
+// CHAT
+// =====================
+app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITool> tools) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Message))
+        return Results.BadRequest("Message cannot be empty.");
+
+    if (string.IsNullOrWhiteSpace(request.ConversationId))
+        return Results.BadRequest("ConversationId is required.");
+
+    var messageLower = request.Message.ToLower();
+
+    bool isAnalysisQuery =
+        messageLower.Contains("analyze") ||
+        messageLower.Contains("analyse") ||
+        messageLower.Contains("compare") ||
+        messageLower.Contains("recommend") ||
+        messageLower.Contains("should i buy") ||
+        messageLower.Contains("should i sell") ||
+        messageLower.Contains("which is better") ||
+        messageLower.Contains("vs") ||
+        messageLower.Contains("versus");
+
+    bool isStockQuery =
+        messageLower.Contains("price of") ||
+        messageLower.Contains("stock price") ||
+        messageLower.Contains("how much is");
+
+    bool isNoteQuery =
+        messageLower.Contains("remember") ||
+        messageLower.Contains("save") ||
+        messageLower.Contains("note");
+
+    bool isNewsQuery =
+    messageLower.Contains("news") ||
+    messageLower.Contains("headlines") ||
+    messageLower.Contains("latest on");
+
+    if (isAnalysisQuery)
+    {
+        var toolDecision = await ai.DecideTool(request.Message);
+        if (toolDecision.UseTool && toolDecision.ToolName == "AnalyzeStock")
+        {
+            var analysisTool = tools.FirstOrDefault(t => t.Name == "AnalyzeStock");
+            if (analysisTool != null)
+            {
+                var stockData = analysisTool.Execute(toolDecision.ToolInput);
+                var analysis = await ai.AnalyzeStocks(stockData, request.Message);
+
+                await ai.SaveToolMessage(request.Message, analysis, request.ConversationId, request.UserName);
+
+                return Results.Ok(new
+                {
+                    toolUsed = true,
+                    tool = "AnalyzeStock",
+                    result = analysis,
+                    conversationId = request.ConversationId
+                });
+            }
+        }
+    }
+
+    if (isStockQuery)
+    {
+        var toolDecision = await ai.DecideTool(request.Message);
+        if (toolDecision.UseTool)
+        {
+            var tool = tools.FirstOrDefault(t => t.Name == toolDecision.ToolName);
+            if (tool != null)
+            {
+                var result = tool.Execute(toolDecision.ToolInput);
+
+                await ai.SaveToolMessage(request.Message, result, request.ConversationId, request.UserName);
+
+                return Results.Ok(new
+                {
+                    toolUsed = true,
+                    tool = tool.Name,
+                    result = result,
+                    conversationId = request.ConversationId
+                });
+            }
+        }
+    }
+
+    if (isNoteQuery)
+    {
+        var toolDecision = await ai.DecideTool(request.Message);
+        if (toolDecision.UseTool)
+        {
+            var tool = tools.FirstOrDefault(t => t.Name == toolDecision.ToolName);
+            if (tool != null)
+            {
+                var result = tool.Execute(toolDecision.ToolInput);
+
+                await ai.SaveToolMessage(request.Message, result, request.ConversationId, request.UserName);
+
+                return Results.Ok(new
+                {
+                    toolUsed = true,
+                    tool = tool.Name,
+                    result = result,
+                    conversationId = request.ConversationId
+                });
+            }
+        }
+    }
+    if (isNewsQuery)
+    {
+        var toolDecision = await ai.DecideTool(request.Message);
+        if (toolDecision.UseTool && toolDecision.ToolName == "GetStockNews")
+        {
+            var tool = tools.FirstOrDefault(t => t.Name == "GetStockNews");
+            if (tool != null)
+            {
+                var result = tool.Execute(toolDecision.ToolInput);
+
+                await ai.SaveToolMessage(request.Message, result, request.ConversationId, request.UserName);
+
+                return Results.Ok(new
+                {
+                    toolUsed = true,
+                    tool = tool.Name,
+                    result = result,
+                    conversationId = request.ConversationId
+                });
+            }
+        }
+    }
+    // ── ADD THIS BLOCK in Program.cs, inside the /chat endpoint ──────────────
+    // Place it just before the final try { var reply = await ai.AskAI(...) } block.
+
+    bool isResearchQuery =
+        messageLower.Contains("research") ||
+        messageLower.Contains("backtest") ||
+        messageLower.Contains("historical") ||
+        messageLower.Contains("how did") ||
+        messageLower.Contains("strategy") ||
+        messageLower.Contains("how has") ||
+        messageLower.Contains("performance");
+
+    if (isResearchQuery)
+    {
+        // Extract symbol directly — don't trust phi3:mini to pick the right tool.
+        // Require 2-5 uppercase chars (excludes single letters like I, A).
+        // Skip known non-ticker uppercase words that appear in natural language.
+        var nonTickerWords = new System.Collections.Generic.HashSet<string>
+        {
+            "AI", "US", "UK", "EU", "RSI", "SMA", "EMA", "EV", "ETF", "GDP",
+            "CEO", "IPO", "PE", "EPS", "YOY", "QOQ", "MOM", "ATH", "ATL",
+            "NYSE", "NASDAQ", "SP", "DOW", "FED", "SEC", "IRS", "ESG",
+            "FAQ", "API", "URL", "JSON", "SQL", "CSS", "HTML", "UX"
+        };
+
+        // Walk matches until we find one that isn't a known non-ticker word.
+        var symbolMatch = System.Text.RegularExpressions.Regex.Match(
+            request.Message, @"\b([A-Z]{2,5})\b");
+        while (symbolMatch.Success && nonTickerWords.Contains(symbolMatch.Groups[1].Value))
+            symbolMatch = symbolMatch.NextMatch();
+
+        if (symbolMatch.Success)
+        {
+            var symbol = symbolMatch.Groups[1].Value;
+            var tool = tools.FirstOrDefault(t => t.Name == "ResearchStock");
+
+            if (tool != null)
+            {
+                var researchPrompt = tool.Execute(symbol);
+                var explanation = await ai.InterpretResearch(researchPrompt);
+
+                await ai.SaveToolMessage(
+                    request.Message, explanation,
+                    request.ConversationId, request.UserName);
+
+                return Results.Ok(new
+                {
+                    toolUsed = true,
+                    tool = "ResearchStock",
+                    result = explanation,
+                    conversationId = request.ConversationId
+                });
+            }
+        }
+    }
+    try
+    {
+        var reply = await ai.AskAI(request.Message, request.ConversationId, request.UserName);
+        return Results.Ok(new
+        {
+            toolUsed = false,
+            conversationId = request.ConversationId,
+            message = reply
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem("AI service error: " + ex.Message);
+    }
+});
+
+// =====================
+// CONVERSATIONS — list all past conversations for a user
+// =====================
+app.MapGet("/conversations/{userName}", (string userName, AppDbContext db) =>
+{
+    var conversations = db.ChatMessages
+        .Where(x => x.UserName == userName)
+        .GroupBy(x => x.ConversationId)
+        .Select(g => new
+        {
+            conversationId = g.Key,
+            lastMessage = g.OrderByDescending(m => m.Id).Select(m => m.Content).FirstOrDefault(),
+            lastUpdated = g.OrderByDescending(m => m.Id).Select(m => m.CreatedAt).FirstOrDefault(),
+            messageCount = g.Count()
+        })
+        .OrderByDescending(c => c.lastUpdated)
+        .ToList();
+
+    return Results.Ok(conversations);
+});
+
+// =====================
+// CONVERSATIONS — get all messages for a specific conversation
+// =====================
+app.MapGet("/conversations/{userName}/{conversationId}", (string userName, string conversationId, AppDbContext db) =>
+{
+    var messages = db.ChatMessages
+        .Where(x => x.UserName == userName && x.ConversationId == conversationId)
+        .OrderBy(x => x.Id)
+        .ToList();
+
+    return Results.Ok(messages);
+});
+
+// =====================
+// CONVERSATIONS — delete a conversation
+// =====================
+app.MapDelete("/conversations/{userName}/{conversationId}", async (string userName, string conversationId, AppDbContext db) =>
+{
+    var messages = db.ChatMessages
+        .Where(x => x.UserName == userName && x.ConversationId == conversationId)
+        .ToList();
+
+    db.ChatMessages.RemoveRange(messages);
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { message = "Conversation deleted." });
+});
+// ========================
+// VOLATILITY FACTOR RESEARCH
+// Tests whether annualised volatility predicts RSI strategy effectiveness.
+// Hypothesis: RSI works better on low-volatility stocks than high-volatility stocks.
+// Bucket thresholds (fixed before run, no look-ahead bias):
+//   Low    : annualised vol < 25%
+//   Medium : 25% ≤ vol < 50%
+//   High   : vol ≥ 50%
+// ========================
+
+// POST /api/volatility/run
+// Body: { "symbols": ["AAPL","XOM",...] }
+app.MapPost("/api/volatility/run", async (VolatilityRunRequest req, VolatilityFactorService svc) =>
+{
+    if (req?.Symbols == null || req.Symbols.Count == 0)
+        return Results.BadRequest(new { error = "Provide at least one symbol." });
+
+    var result = await svc.RunAsync(req.Symbols);
+    return Results.Json(result);
+});
+
+// POST /api/volatility/validate
+// Body: { "symbols": [...], "fromYear": 2006, "toYear": 2016 }
+app.MapPost("/api/volatility/validate", async (VolatilityValidateRequest req, VolatilityFactorService svc) =>
+{
+    if (req?.Symbols == null || req.Symbols.Count == 0)
+        return Results.BadRequest(new { error = "Provide at least one symbol." });
+
+    var from = new DateTime(req.FromYear, 1, 1);
+    var to = new DateTime(req.ToYear, 12, 31);
+
+    var result = await svc.RunRangeAsync(req.Symbols, from, to);
+    return Results.Json(result);
+});
+// ========================
+// RSI CANDIDATE SCREENER — v1
+// Applies the validated Finding #1 exclusion rule:
+//   Exclude stocks with >300% 10-year buy-and-hold return.
+// Returns all remaining stocks with current RSI and trend bucket.
+// Sorted by RSI ascending (oversold candidates first).
+//
+// V2 TODO: Add per-stock historical advantage column.
+//          Offer as "Deep Analysis" button — ~2–3 min load on demand.
+// ========================
+app.MapGet("/api/screener/rsi-candidates", async (ScreenerService screener) =>
+{
+    var result = await screener.RunAsync(StockUniverse.All);
+    return Results.Json(result);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// PASTE 3 — Program.cs ENDPOINTS section
+// Add after the screener endpoint block
+// ═══════════════════════════════════════════════════════════════
+
+// ========================
+// PAPER PORTFOLIO
+// Track RSI screener picks without real money.
+// Benchmark: B&H from entry date (fetched from Yahoo Finance on close).
+// P&L on open positions: supplied by caller from last screener run.
+// ========================
+
+// GET /api/paper/{userName}
+// Returns open + closed trades with P&L.
+// Optional body: [{ "symbol": "SLB", "price": 42.10 }, ...] for live P&L on open positions.
+// If no body, open positions show unrealized P&L as null.
+app.MapGet("/api/paper/{userName}", async (string userName, PaperPortfolioService svc) =>
+{
+    var summary = await svc.GetSummaryAsync(userName);
+    return Results.Json(summary);
+});
+
+// POST /api/paper/{userName}/prices
+// Same as GET but accepts a price list in the body for open P&L calculation.
+// Call this after running the screener — pass the screener candidate prices.
+app.MapPost("/api/paper/{userName}/prices",
+    async (string userName, List<PriceUpdate> prices, PaperPortfolioService svc) =>
+    {
+        var summary = await svc.GetSummaryAsync(userName, prices);
+        return Results.Json(summary);
+    });
+
+// POST /api/paper/open
+// Open a new paper trade.
+// Body: { userName, symbol, sector, entryPrice, entryDate, rsiAtEntry, targetExitRsi }
+app.MapPost("/api/paper/open", async (OpenTradeRequest req, PaperPortfolioService svc) =>
+{
+    if (string.IsNullOrWhiteSpace(req.UserName) || string.IsNullOrWhiteSpace(req.Symbol))
+        return Results.BadRequest(new { error = "UserName and Symbol are required." });
+    if (req.EntryPrice <= 0)
+        return Results.BadRequest(new { error = "EntryPrice must be greater than 0." });
+    if (req.RsiAtEntry < 0 || req.RsiAtEntry > 100)
+        return Results.BadRequest(new { error = "RsiAtEntry must be between 0 and 100." });
+
+    var trade = await svc.OpenTradeAsync(req);
+    return Results.Ok(new { message = $"Paper trade opened for {req.Symbol.ToUpper()}.", trade });
+});
+
+// POST /api/paper/close
+// Close an existing paper trade. Fetches B&H benchmark automatically.
+// Body: { tradeId, userName, exitPrice, exitDate, rsiAtExit }
+app.MapPost("/api/paper/close", async (CloseTradeRequest req, PaperPortfolioService svc) =>
+{
+    if (req.ExitPrice <= 0)
+        return Results.BadRequest(new { error = "ExitPrice must be greater than 0." });
+
+    var trade = await svc.CloseTradeAsync(req);
+    if (trade == null)
+        return Results.NotFound(new { error = "Trade not found, already closed, or not owned by this user." });
+
+    return Results.Ok(new { message = $"{trade.Symbol} trade closed.", trade });
+});
+
+// DELETE /api/paper/{tradeId}/{userName}
+// Delete an open trade (cancel before close). Closed trades cannot be deleted.
+app.MapDelete("/api/paper/{tradeId}/{userName}", async (int tradeId, string userName, PaperPortfolioService svc) =>
+{
+    var deleted = await svc.DeleteTradeAsync(tradeId, userName);
+    if (!deleted)
+        return Results.NotFound(new { error = "Trade not found, already closed, or not owned by this user." });
+    return Results.Ok(new { message = "Paper trade deleted." });
+});
+// ========================
+// RSI LOOKUP — single symbol (any symbol, not just StockUniverse)
+// Used by WatchlistPanel, PortfolioPanel and AlertsPanel to show live RSI + price.
+// Uses Yahoo Finance (same as screener) — free, no daily cap.
+// FIX: Now returns currentPrice (regularMarketPrice) so Portfolio P&L works.
+// REPLACE the existing /api/screener/rsi/{symbol} endpoint in Program.cs
+// ========================
+app.MapGet("/api/screener/rsi/{symbol}", async (string symbol, HistoricalDataService data) =>
+{
+    var sym = symbol.ToUpper().Trim();
+
+    try
+    {
+        var bars = await data.GetDailyHistoryAsync(sym);
+
+        if (bars.Count < 20)
+            return Results.Json(new
+            {
+                symbol = sym,
+                currentRsi = (decimal?)null,
+                currentPrice = (decimal?)null,
+                trendBucket = (string?)null,
+                bahReturn = (decimal?)null,
+                passes = (bool?)null,
+                error = $"Insufficient data ({bars.Count} bars)"
+            });
+
+        // 10-year B&H return
+        var firstClose = bars.First().Close;
+        var lastClose = bars.Last().Close;
+        decimal bahReturn = Math.Round(((lastClose - firstClose) / firstClose) * 100, 1);
+
+        // Trend bucket
+        string trendBucket = bahReturn < 100 ? "Weak (<100%)"
+                           : bahReturn < 300 ? "Medium (100–300%)"
+                                             : "Strong (>300%)";
+
+        // Current RSI from historical closes
+        var closes = bars.Select(b => b.Close).ToList();
+        var rsiSeries = TechnicalIndicators.CalculateRsiSeries(closes, period: 14);
+        decimal? currentRsi = rsiSeries.LastOrDefault(r => r.HasValue);
+        if (currentRsi.HasValue) currentRsi = Math.Round(currentRsi.Value, 1);
+
+        // Finding #1 exclusion
+        bool passes = bahReturn <= 300;
+
+        // ── FIX: Fetch live market price from Yahoo Finance quote endpoint ──
+        // The historical bars endpoint gives OHLC but not the live price.
+        // The quote endpoint returns regularMarketPrice — the current price.
+        decimal? currentPrice = null;
+        try
+        {
+            using var http = new System.Net.Http.HttpClient();
+            http.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+            var quoteUrl = $"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d";
+            var quoteRes = await http.GetAsync(quoteUrl);
+            if (quoteRes.IsSuccessStatusCode)
+            {
+                var quoteJson = await quoteRes.Content.ReadAsStringAsync();
+                // Parse regularMarketPrice from the meta object
+                // Example path: result[0].meta.regularMarketPrice
+                var metaMatch = System.Text.RegularExpressions.Regex.Match(
+                    quoteJson, @"""regularMarketPrice""\s*:\s*([\d.]+)");
+                if (metaMatch.Success &&
+                    decimal.TryParse(metaMatch.Groups[1].Value,
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out var price))
+                {
+                    currentPrice = Math.Round(price, 2);
+                }
+            }
+        }
+        catch
+        {
+            // currentPrice stays null — frontend shows — instead of crashing
+        }
+
+        return Results.Json(new
+        {
+            symbol,
+            currentRsi,
+            currentPrice,   // ← NEW: used by Portfolio and Watchlist for P&L
+            trendBucket,
+            bahReturn,
+            passes,
+            excludeReason = passes ? null : "Strong trend (>300% 10y return) — Finding #1 rule"
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new
+        {
+            symbol = sym,
+            currentRsi = (decimal?)null,
+            currentPrice = (decimal?)null,
+            trendBucket = (string?)null,
+            bahReturn = (decimal?)null,
+            passes = (bool?)null,
+            error = ex.Message
+        });
+    }
+});
+
 app.Run();
-
-
-
-
-
-//namespace MyAIAgent
-//{
-//    internal class Program
-//    {
-//        static async Task Main(string[] args)
-//        {
-//            AIService aiService = new AIService();
-
-//            Console.WriteLine("AI Agent Started!");
-//            Console.WriteLine("Type 'exit' to close.");
-//            Console.WriteLine();
-
-//            while (true)
-//            {
-//                Console.Write("You: ");
-
-//                string userInput = Console.ReadLine();
-
-//                if (userInput.ToLower() == "exit")
-//                {
-//                    break;
-//                }
-
-//                string response = await aiService.AskAI(userInput);
-
-//                Console.WriteLine();
-//                Console.WriteLine("AI: " + response);
-//                Console.WriteLine();
-//            }
-//        }
-//    }
-//}
+// ── Volatility request models (add at bottom of Program.cs after app.Run()) ──
+public record VolatilityRunRequest(List<string> Symbols);
+public record VolatilityValidateRequest(List<string> Symbols, int FromYear = 2006, int ToYear = 2016);
