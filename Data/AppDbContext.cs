@@ -14,5 +14,15 @@ namespace MyAIAgent.Data
         }
 
         public DbSet<ChatMessage> ChatMessages { get; set; }
+
+        public DbSet<User> Users { get; set; } 
+
+        public DbSet<WatchlistItem> WatchlistItems { get; set; }
+
+        public DbSet<PortfolioItem> PortfolioItems { get; set; }
+
+        public DbSet<PriceAlert> PriceAlerts { get; set; }
+
+        public DbSet<PaperTrade> PaperTrades { get; set; }
     }
 }

@@ -1,5 +1,12 @@
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\dotnet-tools.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\frontend\chat-ui\.oxlintrc.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\frontend\chat-ui\package-lock.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\frontend\chat-ui\package.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\frontend\chat-ui\tsconfig.app.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\frontend\chat-ui\tsconfig.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\frontend\chat-ui\tsconfig.node.json
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Memory\messages.json
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.staticwebassets.runtime.json
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.staticwebassets.endpoints.json
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.exe
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.deps.json
@@ -7,6 +14,7 @@ C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.runtimeconfig.json
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\MyAIAgent.pdb
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Humanizer.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Build.Framework.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.CodeAnalysis.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.CodeAnalysis.CSharp.dll
@@ -30,6 +38,12 @@ C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Logging.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Logging.Abstractions.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Options.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.Extensions.Primitives.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.IdentityModel.Abstractions.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.IdentityModel.JsonWebTokens.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.IdentityModel.Logging.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.IdentityModel.Protocols.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.IdentityModel.Tokens.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.OpenApi.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Microsoft.VisualStudio.SolutionPersistence.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\Mono.TextTemplating.dll
@@ -46,6 +60,7 @@ C:\Users\biges\MyAIAgent\bin\Debug\net10.0\System.Composition.Convention.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\System.Composition.Hosting.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\System.Composition.Runtime.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\System.Composition.TypedParts.dll
+C:\Users\biges\MyAIAgent\bin\Debug\net10.0\System.IdentityModel.Tokens.Jwt.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\cs\Microsoft.CodeAnalysis.resources.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\de\Microsoft.CodeAnalysis.resources.dll
 C:\Users\biges\MyAIAgent\bin\Debug\net10.0\es\Microsoft.CodeAnalysis.resources.dll

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MyAIAgent.Data;
 
@@ -10,9 +11,11 @@ using MyAIAgent.Data;
 namespace MyAIAgent.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260614215833_AddPortfolioFinal")]
+    partial class AddPortfolioFinal
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.8");
@@ -31,14 +34,7 @@ namespace MyAIAgent.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Role")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UserName")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -77,44 +73,6 @@ namespace MyAIAgent.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("PortfolioItems");
-                });
-
-            modelBuilder.Entity("MyAIAgent.Models.PriceAlert", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Direction")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IsTriggered")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Symbol")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("TargetPrice")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("TriggeredAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal?>("TriggeredPrice")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UserName")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("PriceAlerts");
                 });
 
             modelBuilder.Entity("MyAIAgent.Models.User", b =>
