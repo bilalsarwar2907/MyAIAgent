@@ -234,6 +234,79 @@ namespace MyAIAgent.Services
         }
 
         /// <summary>
+        /// Reads trading_output.txt (written daily by daily_agent.py) and returns
+        /// a formatted context block to inject into the system prompt.
+        /// Returns empty string if the file doesn't exist yet.
+        /// </summary>
+        private static string BuildPortfolioContext()
+        {
+            var reportPath = @"C:\Users\biges\Claude\Projects\MyAIAgent — Stock Trading Bot\trading_output.txt";
+            try
+            {
+                if (!File.Exists(reportPath)) return "";
+                var content = File.ReadAllText(reportPath);
+                return
+                    "\n\n--- CURRENT PORTFOLIO STATE (auto-updated daily by daily_agent.py) ---\n" +
+                    content +
+                    "\n--- END PORTFOLIO STATE ---\n\n" +
+                    "When the user asks about their trades, positions, RSI, P&L, or portfolio status, " +
+                    "answer using the data above. Do not ask the user to provide this information.";
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// Same as AskAI() but injects the current portfolio state from trading_output.txt
+        /// into the system prompt. Called for position-related queries only.
+        /// </summary>
+        public async Task<string> AskAIWithPortfolioContext(string userMessage, string conversationId, string userName)
+        {
+            var enrichedSystemPrompt = SYSTEM_PROMPT + BuildPortfolioContext();
+
+            var oldMessages = _dbContext.ChatMessages
+                .Where(x => x.ConversationId == conversationId)
+                .OrderBy(x => x.Id)
+                .ToList();
+
+            var messages = new List<Message>
+            {
+                new Message { role = "system", content = enrichedSystemPrompt }
+            };
+
+            foreach (var msg in oldMessages)
+                messages.Add(new Message { role = msg.Role, content = msg.Content });
+
+            _dbContext.ChatMessages.Add(new ChatMessage
+            {
+                Role = "user",
+                Content = userMessage,
+                ConversationId = conversationId,
+                UserName = userName,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _dbContext.SaveChangesAsync();
+
+            messages.Add(new Message { role = "user", content = userMessage });
+
+            var aiReply = await CallOllamaAsync(messages);
+
+            _dbContext.ChatMessages.Add(new ChatMessage
+            {
+                Role = "assistant",
+                Content = aiReply,
+                ConversationId = conversationId,
+                UserName = userName,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _dbContext.SaveChangesAsync();
+
+            return aiReply;
+        }
+
+        /// <summary>
         /// Sends messages to Ollama and returns the AI text reply.
         /// </summary>
         private async Task<string> CallOllamaAsync(List<Message> messages)
