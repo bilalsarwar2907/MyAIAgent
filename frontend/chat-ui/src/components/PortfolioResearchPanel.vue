@@ -3,6 +3,7 @@
 
     <div class="pr-header">
       <span class="pr-title">Portfolio Research</span>
+      <span class="pr-subtitle">Test RSI strategy across multiple stocks · Check B&amp;H filter · Validate before adding to Screener</span>
     </div>
 
     <!-- Ticker input -->
@@ -21,15 +22,18 @@
 
     <div v-if="error" class="pr-error">{{ error }}</div>
 
+    <!-- Positioning banner — always visible, above results -->
+    <div class="pr-positioning-banner">
+      🔬 <strong>Research and validation only.</strong>
+      Trading decisions must come from the <strong>Screener + Rulebook</strong>.
+      Do not modify strategy based on these results.
+    </div>
+
+    <!-- Input hint -->
+    <div class="pr-input-hint">Enter 2–10 tickers · Press Enter or click Research All · Results load one by one</div>
+
     <!-- Results -->
     <div v-if="results.length" class="pr-results">
-
-      <!-- CHANGE 1: Positioning banner — always shown with results -->
-      <div class="pr-positioning-banner">
-        🔬 <strong>Research and validation only.</strong>
-        Trading decisions must come from the <strong>Screener + Rulebook</strong>.
-        Do not modify strategy based on these results.
-      </div>
 
       <!-- CHANGE 2: Finding #1 connection — shown when strong-trend stocks detected -->
       <div v-if="strongTrendStocks.length > 0" class="pr-finding-connection">
@@ -171,8 +175,20 @@
 
     </div>
 
-    <div v-if="!results.length && !loading && !error" class="pr-empty">
-      Enter two or more tickers separated by commas to compare how strategies performed across your portfolio.
+    <div v-if="!results.length && !loading && !error" class="pr-purpose-card">
+      <div class="pr-purpose-step">
+        <span class="pr-step-num">1</span>
+        <div><strong>Enter tickers</strong> — paste a comma-separated list of 2–10 stocks (e.g. <code>IBM, XOM, MSFT</code>)</div>
+      </div>
+      <div class="pr-purpose-step">
+        <span class="pr-step-num">2</span>
+        <div><strong>Run Research</strong> — the backtest engine checks all RSI strategies against Buy &amp; Hold over 10 years</div>
+      </div>
+      <div class="pr-purpose-step">
+        <span class="pr-step-num">3</span>
+        <div><strong>Read the verdict</strong> — stocks where B&amp;H return &gt; 300% are flagged as excluded by the Rulebook (Finding #1)</div>
+      </div>
+      <div class="pr-purpose-note">Use this tab to validate candidates before adding them to the Screener.</div>
     </div>
 
   </div>
@@ -357,8 +373,9 @@ function median(arr) {
   color: var(--color-text);
 }
 
-.pr-header { display: flex; align-items: center; gap: 8px; }
-.pr-title  { font-size: 14px; font-weight: 700; }
+.pr-header   { display: flex; flex-direction: column; gap: 2px; }
+.pr-title    { font-size: 14px; font-weight: 700; }
+.pr-subtitle { font-size: 11px; color: var(--color-muted); line-height: 1.4; }
 
 .pr-input-row { display: flex; gap: 6px; }
 .pr-input {
@@ -469,4 +486,51 @@ function median(arr) {
 .pr-sw-median { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .pr-empty { text-align: center; padding: 2rem 0.5rem; color: var(--color-muted); font-size: 13px; line-height: 1.6; }
+
+/* Input hint */
+.pr-input-hint {
+  font-size: 11px;
+  color: var(--color-muted);
+  padding: 0 2px;
+  margin-top: -4px;
+}
+
+/* Purpose card (empty state) */
+.pr-purpose-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 16px;
+  background: var(--color-bg2);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+.pr-purpose-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.pr-step-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.pr-purpose-note {
+  font-size: 11px;
+  color: var(--color-muted);
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+  line-height: 1.5;
+}
 </style>
