@@ -111,7 +111,7 @@ const tabs = [
   { id: 'portfolio',  icon: '💼', label: 'Real Money' },
   { id: 'alerts',     icon: '🔔', label: 'RSI Alerts' },
   { id: 'research',   icon: '🔍', label: 'Research'   },
-  { id: 'multi',      icon: '📊', label: 'Multi'      },
+  { id: 'multi',      icon: '📊', label: 'Compare'    },
   { id: 'sectors',    icon: '🌐', label: 'Sectors'    },
   { id: 'factors',    icon: '📈', label: 'Factors'    },
   { id: 'findings',   icon: '🏆', label: 'Findings'   },
