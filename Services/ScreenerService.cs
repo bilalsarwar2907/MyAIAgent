@@ -61,12 +61,32 @@ namespace MyAIAgent.Services
                                        : bahReturn < 300 ? "Medium (100–300%)"
                                                            : "Strong (>300%)";
 
-                    // ── Current RSI (last 14 days, needs 14+ bars of close) ───
-                    // TechnicalIndicators.CalculateRsiSeries returns a full series;
-                    // we take the last non-null value as the "current" RSI.
+                    // ── Current RSI + slope (needs 14+ bars of close) ─────────
+                    // RSI slope = today's RSI minus yesterday's RSI.
+                    // Positive slope = RSI turning up (oversold bounce candidate).
+                    // Negative slope = RSI still falling (too early to enter).
                     var closes = bars.Select(b => b.Close).ToList();
                     var rsiSeries = TechnicalIndicators.CalculateRsiSeries(closes, period: 14);
-                    decimal? currentRsi = rsiSeries.LastOrDefault(r => r.HasValue);
+                    var validRsi = rsiSeries.Where(r => r.HasValue).Select(r => r!.Value).ToList();
+                    decimal? currentRsi  = validRsi.Count >= 1 ? Math.Round(validRsi[^1], 1) : null;
+                    decimal? previousRsi = validRsi.Count >= 2 ? Math.Round(validRsi[^2], 1) : null;
+                    decimal? rsiSlope    = (currentRsi.HasValue && previousRsi.HasValue)
+                                          ? Math.Round(currentRsi.Value - previousRsi.Value, 2)
+                                          : null;
+
+                    // ── Signal status (4-state pipeline) ──────────────────────
+                    // 🔴 Entry Signal  — RSI < 30 AND slope up   → Track A (validated baseline)
+                    // 🧪 Experimental  — RSI 30–40 AND slope up  → Track B (separate experiment)
+                    // 🟡 Watching      — RSI < 40 AND slope down → monitor, no action
+                    // ⚪ No Setup      — RSI >= 40               → nothing to do
+                    string signalStatus = "No Setup";
+                    if (currentRsi.HasValue && currentRsi < 40)
+                    {
+                        if (rsiSlope.HasValue && rsiSlope > 0)
+                            signalStatus = currentRsi < 30 ? "Entry Signal" : "Experimental";
+                        else
+                            signalStatus = "Watching";
+                    }
 
                     // ── Finding #1 exclusion rule ──────────────────────────────
                     bool passes = bahReturn <= 300;
@@ -77,7 +97,10 @@ namespace MyAIAgent.Services
                         Sector = _symbolToSector.TryGetValue(symbol, out var sec) ? sec : "unknown",
                         BahReturn = bahReturn,
                         TrendBucket = trendBucket,
-                        CurrentRsi = currentRsi.HasValue ? Math.Round(currentRsi.Value, 1) : null,
+                        CurrentRsi = currentRsi,
+                        PreviousRsi = previousRsi,
+                        RsiSlope = rsiSlope,
+                        SignalStatus = signalStatus,
                         Passes = passes,
                         ExcludeReason = passes ? null : "Strong trend (>300% 10y return) — Finding #1 rule"
                     };
@@ -102,7 +125,8 @@ namespace MyAIAgent.Services
                 TotalCandidates = candidates.Count,
                 TotalExcluded = excluded.Count,
                 ExclusionRule = "Finding #1: exclude stocks with >300% 10-year B&H return",
-                OversoldCount = candidates.Count(s => s.CurrentRsi.HasValue && s.CurrentRsi < 30),
+                OversoldCount = candidates.Count(s => s.SignalStatus == "Entry Signal"),
+                ExperimentalCount = candidates.Count(s => s.SignalStatus == "Experimental"),
                 GeneratedAt = DateTime.UtcNow,
                 Candidates = candidates.OrderBy(s => s.CurrentRsi ?? 999).ToList(),
                 Excluded = excluded.OrderByDescending(s => s.BahReturn).ToList(),
@@ -118,6 +142,7 @@ namespace MyAIAgent.Services
         public int TotalExcluded { get; set; }
         public string ExclusionRule { get; set; } = "";
         public int OversoldCount { get; set; }
+        public int ExperimentalCount { get; set; }
         public DateTime GeneratedAt { get; set; }
         public List<ScreenerStock> Candidates { get; set; } = new();
         public List<ScreenerStock> Excluded { get; set; } = new();
@@ -131,6 +156,9 @@ namespace MyAIAgent.Services
         public decimal BahReturn { get; set; }
         public string TrendBucket { get; set; } = "";
         public decimal? CurrentRsi { get; set; }
+        public decimal? PreviousRsi { get; set; }
+        public decimal? RsiSlope { get; set; }
+        public string SignalStatus { get; set; } = "No Setup";
         public bool Passes { get; set; }
         public string? ExcludeReason { get; set; }
     }
