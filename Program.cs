@@ -1043,6 +1043,42 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
             }
         }
     }
+    // ── PORTFOLIO QUERY — inject daily_agent.py report into context ─────────
+    // Fires when the user asks about their open trades, RSI status, or P&L.
+    // Uses trading_output.txt (written each weekday at 09:15 by daily_agent.py).
+    bool isPortfolioQuery =
+        messageLower.Contains("my trade") ||
+        messageLower.Contains("my position") ||
+        messageLower.Contains("my portfolio") ||
+        messageLower.Contains("open position") ||
+        messageLower.Contains("how am i doing") ||
+        messageLower.Contains("how are my") ||
+        messageLower.Contains("ibm") ||
+        messageLower.Contains("intc") ||
+        messageLower.Contains("exit trigger") ||
+        messageLower.Contains("should i hold") ||
+        messageLower.Contains("should i exit") ||
+        messageLower.Contains("p&l") ||
+        messageLower.Contains("my rsi");
+
+    if (isPortfolioQuery)
+    {
+        try
+        {
+            var reply = await ai.AskAIWithPortfolioContext(request.Message, request.ConversationId, request.UserName);
+            return Results.Ok(new
+            {
+                toolUsed = false,
+                conversationId = request.ConversationId,
+                message = reply
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem("AI service error: " + ex.Message);
+        }
+    }
+
     try
     {
         var reply = await ai.AskAI(request.Message, request.ConversationId, request.UserName);
