@@ -899,6 +899,41 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
 
     if (isAnalysisQuery)
     {
+        // Fast-path: extract symbols directly — bypasses slow DecideTool Ollama call
+        var actionMatch = System.Text.RegularExpressions.Regex.Match(
+            request.Message,
+            @"(?:analyze|analyse|compare|recommend)\s+((?:[A-Z]{1,5}[,\s]*)+?)(?:\s+(?:and|vs|versus|against|with|give|for|please)|$)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        string extractedInput = "";
+        if (actionMatch.Success)
+        {
+            extractedInput = string.Join(",",
+                actionMatch.Groups[1].Value
+                    .Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Where(w => w.Length >= 1 && w.Length <= 5 && w.All(char.IsLetter))
+                    .Select(w => w.ToUpper()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(extractedInput))
+        {
+            var analysisTool = tools.FirstOrDefault(t => t.Name == "AnalyzeStock");
+            if (analysisTool != null)
+            {
+                var stockData = analysisTool.Execute(extractedInput);
+                var analysis = await ai.AnalyzeStocks(stockData, request.Message);
+                await ai.SaveToolMessage(request.Message, analysis, request.ConversationId, request.UserName);
+                return Results.Ok(new
+                {
+                    toolUsed = true,
+                    tool = "AnalyzeStock",
+                    result = analysis,
+                    conversationId = request.ConversationId
+                });
+            }
+        }
+
+        // Fallback: use DecideTool for complex queries where regex didn't find a symbol
         var toolDecision = await ai.DecideTool(request.Message);
         if (toolDecision.UseTool && toolDecision.ToolName == "AnalyzeStock")
         {
@@ -907,9 +942,7 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
             {
                 var stockData = analysisTool.Execute(toolDecision.ToolInput);
                 var analysis = await ai.AnalyzeStocks(stockData, request.Message);
-
                 await ai.SaveToolMessage(request.Message, analysis, request.ConversationId, request.UserName);
-
                 return Results.Ok(new
                 {
                     toolUsed = true,
