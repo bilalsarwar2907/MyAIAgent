@@ -5,7 +5,7 @@
     <div class="wl-header">
       <div class="wl-header-left">
         <span class="wl-title">⭐ Watchlist</span>
-        <span class="wl-subtitle">RSI status · updated on refresh</span>
+        <span class="wl-subtitle">Monitor stocks for RSI signals · RSI &lt; 30 = oversold entry · RSI &gt; 60 = exit</span>
       </div>
       <button class="wl-refresh-btn" :disabled="refreshing" @click="refreshAll">
         <span v-if="refreshing" class="wl-spinner">⟳</span>
@@ -20,6 +20,13 @@
       <button class="wl-add-btn" :disabled="!newSymbol.trim()" @click="addStock">+ Add</button>
     </div>
 
+    <!-- RSI info strip — always visible -->
+    <div class="wl-info-strip">
+      📐 <strong>RSI</strong> (Relative Strength Index) measures price momentum on a 0–100 scale.
+      This platform watches for <strong>RSI &lt; 30</strong> (oversold) as a potential entry signal
+      and <strong>RSI &gt; 60</strong> as the exit signal.
+    </div>
+
     <!-- Error -->
     <div v-if="error" class="wl-error">⚠️ {{ error }}</div>
 
@@ -27,10 +34,20 @@
     <div v-if="loading" class="wl-empty">Loading watchlist…</div>
 
     <!-- Empty -->
-    <div v-else-if="items.length === 0" class="wl-empty">
-      <div class="wl-empty-icon">⭐</div>
-      <div class="wl-empty-title">No stocks yet</div>
-      <div class="wl-empty-desc">Add a symbol above to start monitoring RSI levels.</div>
+    <div v-else-if="items.length === 0" class="wl-purpose-card">
+      <div class="wl-purpose-step">
+        <span class="wl-step-num">1</span>
+        <div><strong>Add a ticker</strong> — type any stock symbol (e.g. <code>SLB</code>, <code>IBM</code>, <code>XOM</code>) and press Enter or click + Add</div>
+      </div>
+      <div class="wl-purpose-step">
+        <span class="wl-step-num">2</span>
+        <div><strong>Refresh</strong> — fetches current RSI and 10-year Buy &amp; Hold trend for each stock you're watching</div>
+      </div>
+      <div class="wl-purpose-step">
+        <span class="wl-step-num">3</span>
+        <div><strong>Read the signal</strong> — RSI &lt; 30 = oversold, check Screener for entry · RSI &gt; 60 = recovered, consider closing paper trade</div>
+      </div>
+      <div class="wl-purpose-note">Stocks with a 10-year B&amp;H return &gt; 300% are automatically excluded by the Rulebook (Finding #1) and shown separately.</div>
     </div>
 
     <!-- FIX 3: Visually separate valid from excluded -->
@@ -322,7 +339,10 @@ async function removeStock(id) {
   items.value = items.value.filter(i => i.id !== id)
 }
 
-function analyzeStock(symbol) { chatStore.sendMessage('analyze ' + symbol + ' and give me a detailed recommendation') }
+function analyzeStock(symbol) {
+  chatStore.sendMessage('analyze ' + symbol + ' and give me a detailed recommendation')
+  window.dispatchEvent(new CustomEvent('expand-chat'))
+}
 function goToScreener() { window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'screener' })) }
 function goToPaper()    { window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'paper' })) }
 
@@ -494,4 +514,56 @@ onMounted(async () => {
 .wl-bold  { font-weight: 800; }
 
 .wl-last-refreshed { font-size: 10px; color: var(--text-muted); text-align: center; padding-top: 4px; }
+
+/* RSI info strip */
+.wl-info-strip {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: rgba(99,102,241,.08);
+  border: 1px solid rgba(99,102,241,.2);
+  border-left: 3px solid #818cf8;
+  border-radius: 0 7px 7px 0;
+  color: var(--text-secondary);
+}
+.wl-info-strip strong { color: #818cf8; }
+
+/* Purpose card (empty state) */
+.wl-purpose-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 16px;
+  background: var(--bg-panel-item);
+  border-radius: 8px;
+  border: 1px solid var(--bg-panel-border);
+}
+.wl-purpose-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.wl-step-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.wl-purpose-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--bg-panel-border);
+  padding-top: 10px;
+  line-height: 1.5;
+}
 </style>

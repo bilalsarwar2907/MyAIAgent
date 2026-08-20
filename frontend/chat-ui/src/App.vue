@@ -129,7 +129,17 @@ const handleLogout = () => {
 
 const onSwitchTab = (e) => { activeTab.value = e.detail }
 window.addEventListener('switch-tab', onSwitchTab)
-onUnmounted(() => window.removeEventListener('switch-tab', onSwitchTab))
+
+const onExpandChat = () => {
+  chatCollapsed.value = false
+  localStorage.setItem(COLLAPSE_KEY, '0')
+}
+window.addEventListener('expand-chat', onExpandChat)
+
+onUnmounted(() => {
+  window.removeEventListener('switch-tab', onSwitchTab)
+  window.removeEventListener('expand-chat', onExpandChat)
+})
 </script>
 
 <style>
