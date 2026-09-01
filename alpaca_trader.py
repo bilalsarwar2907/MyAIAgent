@@ -27,7 +27,16 @@ WORKFLOW GOING FORWARD (every new trade):
   Step 4 — Record the close:           record_close_in_app("SLB", exit_price=48.50, exit_date="2026-09-15", rsi_at_exit=62.1)
 """
 
+import os
+
 import requests as _requests
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+except ImportError:
+    # python-dotenv is optional — fall back to real environment variables.
+    pass
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
@@ -37,15 +46,26 @@ from alpaca.trading.requests import (
 from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 
 # ── ALPACA CONFIG ────────────────────────────────────────────────────────────
-API_KEY    = "REDACTED_ALPACA_API_KEY"
-SECRET_KEY = "REDACTED_ALPACA_SECRET_KEY"
-PAPER      = True  # Always True until you're ready for real money
+# Credentials are read from the environment (see .env / .env.example).
+# Never hard-code keys in this file — it is tracked in git.
+API_KEY    = os.environ.get("ALPACA_API_KEY", "")
+SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
+PAPER      = os.environ.get("ALPACA_PAPER", "true").lower() != "false"  # default True
+
+if not API_KEY or not SECRET_KEY:
+    raise SystemExit(
+        "Missing Alpaca credentials. Create a .env file next to alpaca_trader.py with:\n"
+        "  ALPACA_API_KEY=your_key\n"
+        "  ALPACA_SECRET_KEY=your_secret\n"
+        "  ALPACA_PAPER=true\n"
+        "(copy .env.example to .env and fill it in)"
+    )
 # ────────────────────────────────────────────────────────────────────────────
 
 # ── APP CONFIG ───────────────────────────────────────────────────────────────
 # To verify your username: open app in browser → F12 → Console → localStorage.getItem('userName')
-BACKEND_URL = "http://localhost:60363"
-APP_USER    = "bilal"   # ← update this if your login username is different
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:60363")
+APP_USER    = os.environ.get("APP_USER", "bilal")   # ← your login username
 # ────────────────────────────────────────────────────────────────────────────
 
 client = TradingClient(API_KEY, SECRET_KEY, paper=PAPER)
