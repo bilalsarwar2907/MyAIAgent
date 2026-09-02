@@ -84,11 +84,12 @@ builder.Services.AddScoped<ITool, BacktestTool>();
 builder.Services.AddScoped<ITool, StockResearchTool>();
 
 // =====================
-// MVC CONTROLLERS + SWAGGER
+// MVC CONTROLLERS + SWAGGER + PROBLEM DETAILS
 // =====================
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddProblemDetails();
 
 // =====================
 // CORS
@@ -109,7 +110,15 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Auto-create tables on startup
+// Turns unhandled exceptions into RFC 7807 ProblemDetails responses instead of
+// each endpoint hand-rolling `Results.Problem(ex.Message)` and leaking internals.
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+
+// Auto-create tables on startup.
+// NOTE: this uses EnsureCreated() which bypasses the EF migrations in /Migrations.
+// Left as-is deliberately — switching to db.Database.Migrate() on a database that
+// was created by EnsureCreated() needs a manual baseline and is out of scope here.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -170,18 +179,23 @@ app.MapGet("/watchlist/{userName}", (string userName, AppDbContext db) =>
     return Results.Ok(items);
 });
 
-app.MapPost("/watchlist", async (WatchlistItem item, AppDbContext db) =>
+app.MapPost("/watchlist", async (MyAIAgent.Models.Requests.AddWatchlistItemRequest request, AppDbContext db) =>
 {
-    if (string.IsNullOrWhiteSpace(item.UserName) || string.IsNullOrWhiteSpace(item.Symbol))
+    if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrWhiteSpace(request.Symbol))
         return Results.BadRequest("UserName and Symbol are required.");
 
-    var exists = db.WatchlistItems.Any(
-        x => x.UserName == item.UserName && x.Symbol == item.Symbol.ToUpper());
+    var symbol = request.Symbol.ToUpper();
+    var exists = db.WatchlistItems.Any(x => x.UserName == request.UserName && x.Symbol == symbol);
     if (exists)
-        return Results.BadRequest(item.Symbol.ToUpper() + " is already in your watchlist.");
+        return Results.BadRequest(symbol + " is already in your watchlist.");
 
-    item.Symbol = item.Symbol.ToUpper();
-    item.AddedAt = DateTime.UtcNow;
+    var item = new WatchlistItem
+    {
+        UserName = request.UserName,
+        Symbol = symbol,
+        Note = request.Note ?? string.Empty,
+        AddedAt = DateTime.UtcNow
+    };
     db.WatchlistItems.Add(item);
     await db.SaveChangesAsync();
     return Results.Ok(new { message = item.Symbol + " added to watchlist.", item });
@@ -208,15 +222,22 @@ app.MapGet("/portfolio/{userName}", (string userName, AppDbContext db) =>
     return Results.Ok(items);
 });
 
-app.MapPost("/portfolio", async (PortfolioItem item, AppDbContext db) =>
+app.MapPost("/portfolio", async (MyAIAgent.Models.Requests.AddPortfolioItemRequest request, AppDbContext db) =>
 {
-    if (string.IsNullOrWhiteSpace(item.UserName) || string.IsNullOrWhiteSpace(item.Symbol))
+    if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrWhiteSpace(request.Symbol))
         return Results.BadRequest("UserName and Symbol are required.");
-    if (item.Shares <= 0) return Results.BadRequest("Shares must be greater than 0.");
-    if (item.BuyPrice <= 0) return Results.BadRequest("Buy price must be greater than 0.");
+    if (request.Shares <= 0) return Results.BadRequest("Shares must be greater than 0.");
+    if (request.BuyPrice <= 0) return Results.BadRequest("Buy price must be greater than 0.");
 
-    item.Symbol = item.Symbol.ToUpper();
-    item.BoughtAt = DateTime.UtcNow;
+    var item = new PortfolioItem
+    {
+        UserName = request.UserName,
+        Symbol = request.Symbol.ToUpper(),
+        Shares = request.Shares,
+        BuyPrice = request.BuyPrice,
+        Note = request.Note ?? string.Empty,
+        BoughtAt = DateTime.UtcNow
+    };
     db.PortfolioItems.Add(item);
     await db.SaveChangesAsync();
     return Results.Ok(new { message = item.Symbol + " added to portfolio.", item });
@@ -246,20 +267,26 @@ app.MapGet("/alerts/{userName}", (string userName, AppDbContext db) =>
 // =====================
 // PRICE ALERTS — CREATE a new alert
 // =====================
-app.MapPost("/alerts", async (PriceAlert alert, AppDbContext db) =>
+app.MapPost("/alerts", async (MyAIAgent.Models.Requests.CreatePriceAlertRequest request, AppDbContext db) =>
 {
-    if (string.IsNullOrWhiteSpace(alert.UserName) || string.IsNullOrWhiteSpace(alert.Symbol))
+    if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrWhiteSpace(request.Symbol))
         return Results.BadRequest("UserName and Symbol are required.");
 
-    if (alert.TargetPrice <= 0)
+    if (request.TargetPrice <= 0)
         return Results.BadRequest("Target price must be greater than 0.");
 
-    if (alert.Direction != "above" && alert.Direction != "below")
+    if (request.Direction != "above" && request.Direction != "below")
         return Results.BadRequest("Direction must be 'above' or 'below'.");
 
-    alert.Symbol = alert.Symbol.ToUpper();
-    alert.CreatedAt = DateTime.UtcNow;
-    alert.IsTriggered = false;
+    var alert = new PriceAlert
+    {
+        UserName = request.UserName,
+        Symbol = request.Symbol.ToUpper(),
+        TargetPrice = request.TargetPrice,
+        Direction = request.Direction,
+        CreatedAt = DateTime.UtcNow,
+        IsTriggered = false
+    };
 
     db.PriceAlerts.Add(alert);
     await db.SaveChangesAsync();
