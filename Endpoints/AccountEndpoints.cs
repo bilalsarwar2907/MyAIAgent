@@ -1,9 +1,11 @@
 using MyAIAgent.Data;
 using MyAIAgent.Models;
+using MyAIAgent.Services;
 
 namespace MyAIAgent.Endpoints
 {
-    /// <summary>Health check + register/login. Thin — no business logic beyond validation.</summary>
+    /// <summary>Health check + register/login. Passwords are BCrypt-hashed;
+    /// legacy plaintext rows are upgraded transparently on next successful login.</summary>
     public static class AccountEndpoints
     {
         public static void MapAccountEndpoints(this WebApplication app)
@@ -19,7 +21,11 @@ namespace MyAIAgent.Endpoints
                 if (existingUser != null)
                     return Results.BadRequest("Username already exists.");
 
-                db.Users.Add(new User { UserName = request.UserName, Password = request.Password });
+                db.Users.Add(new User
+                {
+                    UserName = request.UserName,
+                    Password = PasswordHasher.Hash(request.Password)
+                });
                 await db.SaveChangesAsync();
                 return Results.Ok("User registered successfully.");
             });
@@ -29,10 +35,18 @@ namespace MyAIAgent.Endpoints
                 if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
                     return Results.BadRequest("Username and password are required.");
 
-                var user = db.Users.FirstOrDefault(
-                    x => x.UserName == request.Username && x.Password == request.Password);
-
+                var user = db.Users.FirstOrDefault(x => x.UserName == request.Username);
                 if (user == null) return Results.Unauthorized();
+
+                if (!PasswordHasher.Verify(request.Password, user.Password, out var needsRehash))
+                    return Results.Unauthorized();
+
+                if (needsRehash)
+                {
+                    user.Password = PasswordHasher.Hash(request.Password);
+                    await db.SaveChangesAsync();
+                }
+
                 return Results.Ok(new { message = "Login successful.", userName = user.UserName });
             });
         }
