@@ -1,17 +1,18 @@
-﻿using MyAIAgent.Models;
+﻿using MyAIAgent.Configuration;
+using MyAIAgent.Models;
 using Newtonsoft.Json;
 using System.Text;
 using MyAIAgent.Data;
+using Microsoft.Extensions.Options;
 
 namespace MyAIAgent.Services
 {
-    public class AIService
+    public class AIService : IAiService
     {
-        private readonly HttpClient _httpClient;
+        private readonly IHttpClientFactory _httpClientFactory;
         private readonly AppDbContext _dbContext;
-
-        private const string AI_MODEL = "phi3:mini";
-        private const string OLLAMA_URL = "http://localhost:11434/api/chat";
+        private readonly OllamaOptions _ollama;
+        private readonly TradingOptions _trading;
 
         private const string SYSTEM_PROMPT =
             "You are a smart AI assistant with two purposes:\n\n" +
@@ -39,13 +40,16 @@ namespace MyAIAgent.Services
             "Always end with: 'This is not financial advice. Always do your own research.'\n\n" +
             "Be direct, specific, and use the actual numbers from the data.";
 
-        public AIService(AppDbContext dbContext)
+        public AIService(
+            AppDbContext dbContext,
+            IHttpClientFactory httpClientFactory,
+            IOptions<OllamaOptions> ollamaOptions,
+            IOptions<TradingOptions> tradingOptions)
         {
             _dbContext = dbContext;
-            _httpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromMinutes(15)
-            };
+            _httpClientFactory = httpClientFactory;
+            _ollama = ollamaOptions.Value;
+            _trading = tradingOptions.Value;
         }
 
         /// <summary>
@@ -238,12 +242,12 @@ namespace MyAIAgent.Services
         /// a formatted context block to inject into the system prompt.
         /// Returns empty string if the file doesn't exist yet.
         /// </summary>
-        private static string BuildPortfolioContext()
+        private string BuildPortfolioContext()
         {
-            var reportPath = @"C:\Users\biges\Claude\Projects\MyAIAgent — Stock Trading Bot\trading_output.txt";
+            var reportPath = _trading.PortfolioReportPath;
             try
             {
-                if (!File.Exists(reportPath)) return "";
+                if (string.IsNullOrWhiteSpace(reportPath) || !File.Exists(reportPath)) return "";
                 var content = File.ReadAllText(reportPath);
                 return
                     "\n\n--- CURRENT PORTFOLIO STATE (auto-updated daily by daily_agent.py) ---\n" +
@@ -313,7 +317,7 @@ namespace MyAIAgent.Services
         {
             var requestBody = new ChatRequest
             {
-                model = AI_MODEL,
+                model = _ollama.Model,
                 stream = false,
                 messages = messages
             };
@@ -321,7 +325,8 @@ namespace MyAIAgent.Services
             var json = JsonConvert.SerializeObject(requestBody);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync(OLLAMA_URL, content);
+            var http = _httpClientFactory.CreateClient("ollama");
+            var response = await http.PostAsync(_ollama.Url, content);
             var responseJson = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)

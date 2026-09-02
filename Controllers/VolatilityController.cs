@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using MyAIAgent.Services;
 
 namespace MyAIAgent.Controllers
@@ -18,9 +18,9 @@ namespace MyAIAgent.Controllers
     [Route("api/volatility")]
     public class VolatilityController : ControllerBase
     {
-        private readonly VolatilityFactorService _service;
+        private readonly IVolatilityFactorService _service;
 
-        public VolatilityController(VolatilityFactorService service)
+        public VolatilityController(IVolatilityFactorService service)
         {
             _service = service;
         }

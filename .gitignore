@@ -480,3 +480,18 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Build artifacts
+bin/
+obj/
+.vs/
+*.user
+
+# Local app configuration containing secrets (API keys, machine paths)
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.local.json
+
+# SQLite write-ahead-log sidecar files
+app.db-shm
+app.db-wal

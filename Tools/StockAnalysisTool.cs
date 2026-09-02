@@ -1,4 +1,6 @@
-﻿using MyAIAgent.Services;
+﻿using MyAIAgent.Configuration;
+using MyAIAgent.Services;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace MyAIAgent.Tools
@@ -41,26 +43,25 @@ namespace MyAIAgent.Tools
     {
         public string Name => "AnalyzeStock";
 
-        // ✅ Replace with your Alpha Vantage API key
-        private const string API_KEY = "RZRQ76MU2EMPJWJN";
-        private const string BASE_URL = "https://www.alphavantage.co/query";
+        private readonly string _apiKey;
+        private readonly string _baseUrl;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        private readonly HttpClient _httpClient;
-
-        public StockAnalysisTool()
+        public StockAnalysisTool(IHttpClientFactory httpClientFactory, IOptions<AlphaVantageOptions> options)
         {
-            _httpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(20)
-            };
+            _httpClientFactory = httpClientFactory;
+            _apiKey = options.Value.ApiKey;
+            _baseUrl = options.Value.BaseUrl;
         }
+
+        private HttpClient Http => _httpClientFactory.CreateClient("alphavantage");
 
         /// <summary>
         /// Input: single symbol like "AAPL" or multiple like "AAPL,MSFT,GOOGL"
         /// </summary>
-        public string Execute(string input)
+        public Task<string> ExecuteAsync(string input)
         {
-            return AnalyzeAsync(input.Trim().ToUpper()).GetAwaiter().GetResult();
+            return AnalyzeAsync(input.Trim().ToUpper());
         }
 
         private async Task<string> AnalyzeAsync(string input)
@@ -95,10 +96,10 @@ namespace MyAIAgent.Tools
             try
             {
                 // ── 1. GLOBAL QUOTE (price, change, volume) ──────────────
-                var quoteUrl = BASE_URL +
-                    "?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + API_KEY;
+                var quoteUrl = _baseUrl +
+                    "?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + _apiKey;
 
-                var quoteJson = await _httpClient.GetStringAsync(quoteUrl);
+                var quoteJson = await Http.GetStringAsync(quoteUrl);
                 var quoteDoc = JsonDocument.Parse(quoteJson);
 
                 // ✅ Check for rate limit BEFORE trying to read quote data
@@ -141,11 +142,11 @@ namespace MyAIAgent.Tools
                 await Task.Delay(1200);
 
                 // ── 2. RSI (momentum indicator) ──────────────────────────
-                var rsiUrl = BASE_URL +
+                var rsiUrl = _baseUrl +
                     "?function=RSI&symbol=" + symbol +
-                    "&interval=daily&time_period=14&series_type=close&apikey=" + API_KEY;
+                    "&interval=daily&time_period=14&series_type=close&apikey=" + _apiKey;
 
-                var rsiJson = await _httpClient.GetStringAsync(rsiUrl);
+                var rsiJson = await Http.GetStringAsync(rsiUrl);
                 var rsiDoc = JsonDocument.Parse(rsiJson);
 
                 if (rsiDoc.RootElement.TryGetProperty("Technical Analysis: RSI", out var rsiData))
@@ -161,11 +162,11 @@ namespace MyAIAgent.Tools
                 await Task.Delay(1200);
 
                 // ── 3. SMA 50-day moving average ─────────────────────────
-                var sma50Url = BASE_URL +
+                var sma50Url = _baseUrl +
                     "?function=SMA&symbol=" + symbol +
-                    "&interval=daily&time_period=50&series_type=close&apikey=" + API_KEY;
+                    "&interval=daily&time_period=50&series_type=close&apikey=" + _apiKey;
 
-                var sma50Json = await _httpClient.GetStringAsync(sma50Url);
+                var sma50Json = await Http.GetStringAsync(sma50Url);
                 var sma50Doc = JsonDocument.Parse(sma50Json);
 
                 if (sma50Doc.RootElement.TryGetProperty("Technical Analysis: SMA", out var sma50Data))
@@ -195,9 +196,9 @@ namespace MyAIAgent.Tools
         /// Every verdict comes from fixed C# rules below, not from the AI,
         /// so the logic is checkable and consistent every time.
         /// </summary>
-        public DecisionTable BuildDecisionTable(string symbol)
+        public async Task<DecisionTable> BuildDecisionTableAsync(string symbol)
         {
-            var data = FetchFullAnalysis(symbol).GetAwaiter().GetResult();
+            var data = await FetchFullAnalysis(symbol);
             var table = new DecisionTable { Symbol = symbol };
 
             if (!string.IsNullOrEmpty(data.Error))
@@ -253,11 +254,11 @@ namespace MyAIAgent.Tools
 
             try
             {
-                var volUrl = BASE_URL +
+                var volUrl = _baseUrl +
                     "?function=TIME_SERIES_DAILY&symbol=" + symbol +
-                    "&outputsize=compact&apikey=" + API_KEY;
+                    "&outputsize=compact&apikey=" + _apiKey;
 
-                var volJson = _httpClient.GetStringAsync(volUrl).GetAwaiter().GetResult();
+                var volJson = await Http.GetStringAsync(volUrl);
                 var volDoc = JsonDocument.Parse(volJson);
 
                 if (volDoc.RootElement.TryGetProperty("Time Series (Daily)", out var series))

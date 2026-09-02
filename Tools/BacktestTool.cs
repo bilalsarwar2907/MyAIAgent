@@ -1,4 +1,6 @@
-﻿using MyAIAgent.Services;
+﻿using MyAIAgent.Configuration;
+using MyAIAgent.Services;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 using System.Globalization;
 
@@ -42,17 +44,15 @@ namespace MyAIAgent.Tools
     {
         public string Name => "BacktestStrategy";
 
-        private const string API_KEY = "RZRQ76MU2EMPJWJN";
-        private const string BASE_URL = "https://www.alphavantage.co/query";
+        private readonly string _apiKey;
+        private readonly string _baseUrl;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        private readonly HttpClient _httpClient;
-
-        public BacktestTool()
+        public BacktestTool(IHttpClientFactory httpClientFactory, IOptions<AlphaVantageOptions> options)
         {
-            _httpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(30)
-            };
+            _httpClientFactory = httpClientFactory;
+            _apiKey = options.Value.ApiKey;
+            _baseUrl = options.Value.BaseUrl;
         }
 
         /// <summary>
@@ -61,7 +61,7 @@ namespace MyAIAgent.Tools
         /// Each symbol costs 1 API request — keep batches small (5 or fewer)
         /// to avoid burning through the daily free-tier limit in one call.
         /// </summary>
-        public string Execute(string input)
+        public async Task<string> ExecuteAsync(string input)
         {
             var symbols = input.Split(',')
                 .Select(s => s.Trim().ToUpper())
@@ -71,18 +71,18 @@ namespace MyAIAgent.Tools
 
             if (symbols.Count == 1)
             {
-                var single = RunBacktest(symbols[0]).GetAwaiter().GetResult();
+                var single = await RunBacktest(symbols[0]);
                 return FormatResult(single);
             }
 
             var results = new List<BacktestResult>();
             for (int i = 0; i < symbols.Count; i++)
             {
-                results.Add(RunBacktest(symbols[i]).GetAwaiter().GetResult());
+                results.Add(await RunBacktest(symbols[i]));
 
                 // Small delay between symbols to be polite to the API
                 if (i < symbols.Count - 1)
-                    Task.Delay(1200).GetAwaiter().GetResult();
+                    await Task.Delay(1200);
             }
 
             return FormatBatchSummary(results);
@@ -91,7 +91,7 @@ namespace MyAIAgent.Tools
         /// Predefined sector groups for comparison testing.
         /// 3 stocks each to keep API usage low (3 requests per sector tested).
         /// </summary>
-        public string ExecuteSector(string sectorName)
+        public Task<string> ExecuteSectorAsync(string sectorName)
         {
             var sectors = new Dictionary<string, string>
     {
@@ -104,10 +104,11 @@ namespace MyAIAgent.Tools
 
             if (!sectors.ContainsKey(key))
             {
-                return "⚠️ Unknown sector '" + sectorName + "'. Available sectors: banks, auto, pharma.";
+                return Task.FromResult(
+                    "⚠️ Unknown sector '" + sectorName + "'. Available sectors: banks, auto, pharma.");
             }
 
-            return Execute(sectors[key]);
+            return ExecuteAsync(sectors[key]);
         }
 
         private async Task<BacktestResult> RunBacktest(string symbol)
@@ -121,11 +122,12 @@ namespace MyAIAgent.Tools
             try
             {
                 // Fetch ~2 years of daily prices
-                var priceUrl = BASE_URL +
+                var priceUrl = _baseUrl +
                     "?function=TIME_SERIES_DAILY&symbol=" + symbol +
-                    "&outputsize=compact&apikey=" + API_KEY;
+                    "&outputsize=compact&apikey=" + _apiKey;
 
-                var priceJson = await _httpClient.GetStringAsync(priceUrl);
+                var http = _httpClientFactory.CreateClient("alphavantage");
+                var priceJson = await http.GetStringAsync(priceUrl);
                 var priceDoc = JsonDocument.Parse(priceJson);
 
                 if (priceDoc.RootElement.TryGetProperty("Information", out var infoMsg))

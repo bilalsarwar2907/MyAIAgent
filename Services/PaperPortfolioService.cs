@@ -12,12 +12,12 @@ namespace MyAIAgent.Services
     ///                   Fetches B&H benchmark (Yahoo Finance) for the same period.
     /// P&L on open:      caller supplies last screener run price (no extra API call).
     /// </summary>
-    public class PaperPortfolioService
+    public class PaperPortfolioService : IPaperPortfolioService
     {
         private readonly AppDbContext _db;
-        private readonly HistoricalDataService _data;
+        private readonly IHistoricalDataService _data;
 
-        public PaperPortfolioService(AppDbContext db, HistoricalDataService data)
+        public PaperPortfolioService(AppDbContext db, IHistoricalDataService data)
         {
             _db = db;
             _data = data;

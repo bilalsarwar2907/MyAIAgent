@@ -34,19 +34,16 @@ namespace MyAIAgent.Services
     /// Free, no API key, no 25-requests/day cap.
     /// Used ONLY for backtesting — live quotes still go through Alpha Vantage.
     /// </summary>
-    public class HistoricalDataService
+    public class HistoricalDataService : IHistoricalDataService
     {
-        private readonly HttpClient _httpClient;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        public HistoricalDataService()
+        public HistoricalDataService(IHttpClientFactory httpClientFactory)
         {
-            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-
-            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/124.0 Safari/537.36");
+            _httpClientFactory = httpClientFactory;
         }
+
+        private HttpClient Http => _httpClientFactory.CreateClient("yahoo");
 
         /// <summary>
         /// LOCKED — do not modify.
@@ -61,7 +58,7 @@ namespace MyAIAgent.Services
             string json;
             try
             {
-                json = await _httpClient.GetStringAsync(url);
+                json = await Http.GetStringAsync(url);
             }
             catch (Exception ex)
             {
@@ -92,7 +89,7 @@ namespace MyAIAgent.Services
             string json;
             try
             {
-                json = await _httpClient.GetStringAsync(url);
+                json = await Http.GetStringAsync(url);
             }
             catch (Exception ex)
             {

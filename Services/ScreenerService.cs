@@ -1,4 +1,4 @@
-﻿using MyAIAgent.Services;
+﻿using MyAIAgent.Common;
 
 namespace MyAIAgent.Services
 {
@@ -14,9 +14,9 @@ namespace MyAIAgent.Services
     /// V2 TODO: Add historical advantage column (full backtest per stock,
     ///          ~2–3 min load time — offer as "Deep Analysis" button on demand).
     /// </summary>
-    public class ScreenerService
+    public class ScreenerService : IScreenerService
     {
-        private readonly HistoricalDataService _data;
+        private readonly IHistoricalDataService _data;
 
         // Sector lookup — reverse-index from StockUniverse.BySector
         private static readonly Dictionary<string, string> _symbolToSector =
@@ -24,7 +24,7 @@ namespace MyAIAgent.Services
                 .SelectMany(kv => kv.Value.Select(sym => (sym, kv.Key)))
                 .ToDictionary(t => t.sym, t => t.Key);
 
-        public ScreenerService(HistoricalDataService data)
+        public ScreenerService(IHistoricalDataService data)
         {
             _data = data;
         }
@@ -57,9 +57,7 @@ namespace MyAIAgent.Services
                     decimal bahReturn = Math.Round(((lastClose - firstClose) / firstClose) * 100, 1);
 
                     // ── Trend bucket (same thresholds as factor research) ──────
-                    string trendBucket = bahReturn < 100 ? "Weak (<100%)"
-                                       : bahReturn < 300 ? "Medium (100–300%)"
-                                                           : "Strong (>300%)";
+                    string trendBucket = TrendBucket.For(bahReturn);
 
                     // ── Current RSI + slope (needs 14+ bars of close) ─────────
                     // RSI slope = today's RSI minus yesterday's RSI.

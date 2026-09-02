@@ -28,11 +28,11 @@
     /// goes either to the REST endpoint (plain text) or to the AI interpretation
     /// layer (StockResearchTool) for a human-readable explanation.
     /// </summary>
-    public class ResearchService
+    public class ResearchService : IResearchService
     {
-        private readonly HistoricalDataService _data;
+        private readonly IHistoricalDataService _data;
 
-        public ResearchService(HistoricalDataService data)
+        public ResearchService(IHistoricalDataService data)
         {
             _data = data;
         }

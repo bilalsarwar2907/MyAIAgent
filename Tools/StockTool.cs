@@ -1,4 +1,6 @@
-﻿using MyAIAgent.Services;
+﻿using MyAIAgent.Configuration;
+using MyAIAgent.Services;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace MyAIAgent.Tools
@@ -7,35 +9,33 @@ namespace MyAIAgent.Tools
     {
         public string Name => "GetStockPrice";
 
-        // ✅ Replace with your Alpha Vantage API key
-        private const string API_KEY = "RZRQ76MU2EMPJWJN";
-        private const string BASE_URL = "https://www.alphavantage.co/query";
+        private readonly string _apiKey;
+        private readonly string _baseUrl;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        private readonly HttpClient _httpClient;
-
-        public StockTool()
+        public StockTool(IHttpClientFactory httpClientFactory, IOptions<AlphaVantageOptions> options)
         {
-            _httpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(15)
-            };
+            _httpClientFactory = httpClientFactory;
+            _apiKey = options.Value.ApiKey;
+            _baseUrl = options.Value.BaseUrl;
         }
 
-        public string Execute(string input)
+        public Task<string> ExecuteAsync(string input)
         {
-            return FetchStockPrice(input.Trim().ToUpper()).GetAwaiter().GetResult();
+            return FetchStockPrice(input.Trim().ToUpper());
         }
 
         private async Task<string> FetchStockPrice(string symbol)
         {
             try
             {
-                var url = BASE_URL +
+                var url = _baseUrl +
                     "?function=GLOBAL_QUOTE" +
                     "&symbol=" + symbol +
-                    "&apikey=" + API_KEY;
+                    "&apikey=" + _apiKey;
 
-                var response = await _httpClient.GetStringAsync(url);
+                var http = _httpClientFactory.CreateClient("alphavantage");
+                var response = await http.GetStringAsync(url);
                 var json = JsonDocument.Parse(response);
 
                 // ✅ Check for rate limit message FIRST

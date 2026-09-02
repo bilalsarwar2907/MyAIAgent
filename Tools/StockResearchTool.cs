@@ -7,16 +7,16 @@ namespace MyAIAgent.Tools
     {
         public string Name => "ResearchStock";
 
-        private readonly ResearchService _research;
+        private readonly IResearchService _research;
 
-        public StockResearchTool(ResearchService research)
+        public StockResearchTool(IResearchService research)
         {
             _research = research;
         }
 
-        public string Execute(string input)
+        public Task<string> ExecuteAsync(string input)
         {
-            return RunAsync(input.Trim().ToUpper()).GetAwaiter().GetResult();
+            return RunAsync(input.Trim().ToUpper());
         }
 
         private async Task<string> RunAsync(string symbol)
