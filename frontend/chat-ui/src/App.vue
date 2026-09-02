@@ -43,6 +43,7 @@
             </button>
           </div>
           <div class="tool-body">
+            <DashboardPanel           v-if="activeTab === 'dashboard'" />
             <WatchlistPanel           v-if="activeTab === 'watch'" />
             <PortfolioPanel           v-if="activeTab === 'portfolio'" />
             <AlertsPanel              v-if="activeTab === 'alerts'" />
@@ -72,6 +73,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { useAlertStore } from '@/stores/alertStore'
 import ConversationSidebar    from '@/components/ConversationSidebar.vue'
 import StockTicker            from '@/components/StockTicker.vue'
+import DashboardPanel         from '@/components/DashboardPanel.vue'
 import WatchlistPanel         from '@/components/WatchlistPanel.vue'
 import PortfolioPanel         from '@/components/PortfolioPanel.vue'
 import AlertsPanel            from '@/components/AlertsPanel.vue'
@@ -88,7 +90,7 @@ const authStore  = useAuthStore()
 const themeStore = useThemeStore()
 const alertStore = useAlertStore()
 const router     = useRouter()
-const activeTab  = ref('watch')
+const activeTab  = ref('dashboard')
 
 // ── Chat collapse — user controlled, persisted across sessions ────────────
 const COLLAPSE_KEY = 'myaiagent_chat_collapsed'
@@ -107,6 +109,7 @@ onMounted(() => {
 })
 
 const tabs = [
+  { id: 'dashboard',  icon: '🏠', label: 'Home'       },
   { id: 'watch',      icon: '⭐', label: 'Watchlist'  },
   { id: 'portfolio',  icon: '💼', label: 'Real Money' },
   { id: 'alerts',     icon: '🔔', label: 'RSI Alerts' },
