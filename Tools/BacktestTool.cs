@@ -167,8 +167,11 @@ namespace MyAIAgent.Tools
                     return result;
                 }
 
-                // Calculate RSI(14) for each day
-                var rsiValues = CalculateRsiSeries(prices, 14);
+                // Calculate RSI(14) for each day using the audited shared
+                // implementation (nullable series — entries before enough history
+                // are null and skipped, never defaulted to 0).
+                var closes = prices.Select(p => p.Close).ToList();
+                var rsiValues = MyAIAgent.Services.TechnicalIndicators.CalculateRsiSeries(closes, 14);
 
                 // Run the strategy: buy when RSI < 30, sell when RSI > 70
                 var trades = new List<Trade>();
@@ -176,9 +179,10 @@ namespace MyAIAgent.Tools
                 DateTime buyDate = default;
                 decimal buyPrice = 0;
 
-                for (int i = 14; i < prices.Count; i++)
+                for (int i = 0; i < prices.Count; i++)
                 {
                     var rsi = rsiValues[i];
+                    if (rsi == null) continue;
 
                     if (!holding && rsi < 30)
                     {
@@ -233,41 +237,6 @@ namespace MyAIAgent.Tools
                 result.Error = "Backtest error: " + ex.Message;
                 return result;
             }
-        }
-
-        /// <summary>
-        /// Calculates RSI for every day in the series using Wilder's smoothing method.
-        /// </summary>
-        private List<decimal> CalculateRsiSeries(List<PricePoint> prices, int period)
-        {
-            var rsi = new List<decimal>(new decimal[prices.Count]);
-
-            decimal avgGain = 0, avgLoss = 0;
-
-            for (int i = 1; i <= period && i < prices.Count; i++)
-            {
-                var change = prices[i].Close - prices[i - 1].Close;
-                if (change > 0) avgGain += change;
-                else avgLoss += Math.Abs(change);
-            }
-
-            avgGain /= period;
-            avgLoss /= period;
-
-            for (int i = period + 1; i < prices.Count; i++)
-            {
-                var change = prices[i].Close - prices[i - 1].Close;
-                var gain = change > 0 ? change : 0;
-                var loss = change < 0 ? Math.Abs(change) : 0;
-
-                avgGain = ((avgGain * (period - 1)) + gain) / period;
-                avgLoss = ((avgLoss * (period - 1)) + loss) / period;
-
-                var rs = avgLoss == 0 ? 100 : avgGain / avgLoss;
-                rsi[i] = avgLoss == 0 ? 100 : 100 - (100 / (1 + rs));
-            }
-
-            return rsi;
         }
 
         /// <summary>
