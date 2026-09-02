@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy this file to appsettings.Development.json and fill in real values. appsettings.Development.json is git-ignored.",
+  "AlphaVantage": {
+    "ApiKey": "your-alpha-vantage-api-key"
+  },
+  "Trading": {
+    "PortfolioReportPath": "C:\\path\\to\\trading_output.txt"
+  }
+}

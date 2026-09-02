@@ -12,6 +12,8 @@
 //
 // Safe to build on: RunSingleAsync, RunBatchAsync, FormatReport
 // ═════════════════════════════
+using MyAIAgent.Common;
+
 namespace MyAIAgent.Services
 {
     public class SimulatedTrade
@@ -63,11 +65,11 @@ namespace MyAIAgent.Services
     /// That's a known simplification — a full daily mark-to-market drawdown is a
     /// reasonable later upgrade once the core go/no-go question is answered.
     /// </summary>
-    public class BacktestEngine
+    public class BacktestEngine : IBacktestEngine
     {
-        private readonly HistoricalDataService _historicalData;
+        private readonly IHistoricalDataService _historicalData;
 
-        public BacktestEngine(HistoricalDataService historicalData)
+        public BacktestEngine(IHistoricalDataService historicalData)
         {
             _historicalData = historicalData;
         }
@@ -204,50 +206,10 @@ namespace MyAIAgent.Services
                 return result;
             }
 
-            var closes = bars.Select(b => b.Close).ToList();
-            var rsiSeries = TechnicalIndicators.CalculateRsiSeries(closes, 14);
-
-            List<decimal?> sma200Series = useTrendFilter
-                ? TechnicalIndicators.CalculateSmaSeries(closes, 200)
-                : null;
-
-            var trades = new List<SimulatedTrade>();
-            bool holding = false;
-            DateTime buyDate = default;
-            decimal buyPrice = 0;
-
-            for (int i = 0; i < bars.Count; i++)
-            {
-                var rsi = rsiSeries[i];
-                if (rsi == null) continue;
-
-                bool trendAllowsEntry = true;
-                if (useTrendFilter && sma200Series != null)
-                {
-                    var sma200 = sma200Series[i];
-                    trendAllowsEntry = sma200 != null ? bars[i].Close < sma200 : false;
-                }
-
-                if (!holding && rsi < rsiBuyThreshold && trendAllowsEntry)
-                {
-                    holding = true;
-                    buyDate = bars[i].Date;
-                    buyPrice = bars[i].Close;
-                }
-                else if (holding && rsi > rsiSellThreshold)
-                {
-                    var returnPct = ((bars[i].Close - buyPrice) / buyPrice) * 100;
-                    trades.Add(new SimulatedTrade
-                    {
-                        BuyDate = buyDate,
-                        BuyPrice = buyPrice,
-                        SellDate = bars[i].Date,
-                        SellPrice = bars[i].Close,
-                        ReturnPercent = returnPct
-                    });
-                    holding = false;
-                }
-            }
+            // Trade generation is delegated to RsiStrategy — identical logic
+            // (same RSI(14), same null-skip, same 200-day trend-filter guard,
+            // same trade construction) so results are unchanged.
+            var trades = new RsiStrategy(rsiBuyThreshold, rsiSellThreshold, useTrendFilter).Run(bars);
 
             result.Trades = trades;
             result.TotalTrades = trades.Count;
@@ -257,18 +219,11 @@ namespace MyAIAgent.Services
                 ? Math.Round((decimal)result.WinningTrades / trades.Count * 100, 1)
                 : 0;
 
-            decimal equity = 1, peak = 1, worstDrawdown = 0;
-            foreach (var t in trades)
-            {
-                equity *= (1 + (t.ReturnPercent / 100));
-                if (equity > peak) peak = equity;
-                var dd = (equity - peak) / peak * 100;
-                if (dd < worstDrawdown) worstDrawdown = dd;
-            }
-            result.TotalReturnPercent = Math.Round((equity - 1) * 100, 2);
-            result.MaxDrawdownPercent = Math.Round(worstDrawdown, 2);
-            result.BuyAndHoldReturnPercent = Math.Round(
-                ((bars.Last().Close - bars.First().Close) / bars.First().Close) * 100, 2);
+            var curve = EquityCurve.Compound(trades.Select(t => t.ReturnPercent));
+            result.TotalReturnPercent = curve.TotalReturnPercent;
+            result.MaxDrawdownPercent = curve.MaxDrawdownPercent;
+            result.BuyAndHoldReturnPercent =
+                EquityCurve.BuyAndHoldReturnPercent(bars.First().Close, bars.Last().Close);
 
             return result;
         }
@@ -298,66 +253,10 @@ namespace MyAIAgent.Services
                 return result;
             }
 
-            var closes = bars.Select(b => b.Close).ToList();
-            var rsiSeries = TechnicalIndicators.CalculateRsiSeries(closes, 14);
-
-            // Trend filter: 200-day SMA computed once for the whole series.
-            // Entry is only allowed when price is BELOW the 200-day MA — i.e.
-            // the stock is not in a strong uptrend, so mean-reversion is plausible.
-            // When price is above the 200-day MA the stock is likely trending up;
-            // RSI<30 dips in that environment are usually brief and quickly recover
-            // far beyond our RSI>70 exit, so we stay out rather than chasing.
-            List<decimal?> sma200Series = useTrendFilter
-                ? TechnicalIndicators.CalculateSmaSeries(closes, 200)
-                : null;
-
-            var trades = new List<SimulatedTrade>();
-            bool holding = false;
-            DateTime buyDate = default;
-            decimal buyPrice = 0;
-
-            for (int i = 0; i < bars.Count; i++)
-            {
-                var rsi = rsiSeries[i];
-                if (rsi == null) continue; // not enough history yet — skip, don't default to 0
-
-                // Trend filter guard: skip entry if price is above 200-day MA.
-                // Once we're already holding we don't force an early exit — we
-                // let the normal RSI>70 exit rule handle it.
-                bool trendAllowsEntry = true;
-                if (useTrendFilter && sma200Series != null)
-                {
-                    var sma200 = sma200Series[i];
-                    if (sma200 != null)
-                        trendAllowsEntry = bars[i].Close < sma200;
-                    else
-                        trendAllowsEntry = false; // not enough history for 200-day yet
-                }
-
-                if (!holding && rsi < rsiBuyThreshold && trendAllowsEntry)
-                {
-                    holding = true;
-                    buyDate = bars[i].Date;
-                    buyPrice = bars[i].Close;
-                }
-                else if (holding && rsi > rsiSellThreshold)
-                {
-                    var sellDate = bars[i].Date;
-                    var sellPrice = bars[i].Close;
-                    var returnPct = ((sellPrice - buyPrice) / buyPrice) * 100;
-
-                    trades.Add(new SimulatedTrade
-                    {
-                        BuyDate = buyDate,
-                        BuyPrice = buyPrice,
-                        SellDate = sellDate,
-                        SellPrice = sellPrice,
-                        ReturnPercent = returnPct
-                    });
-
-                    holding = false;
-                }
-            }
+            // Trade generation is delegated to RsiStrategy — same RSI(14),
+            // same null-skip, same 200-day trend-filter guard (entry only when
+            // price is below the 200-day MA), same trade construction.
+            var trades = new RsiStrategy(rsiBuyThreshold, rsiSellThreshold, useTrendFilter).Run(bars);
 
             result.Trades = trades;
             result.TotalTrades = trades.Count;
@@ -368,22 +267,11 @@ namespace MyAIAgent.Services
                 : 0;
 
             // Compounded return + drawdown on the closed-trade equity curve
-            decimal equity = 1;
-            decimal peak = 1;
-            decimal worstDrawdown = 0;
-            foreach (var t in trades)
-            {
-                equity *= (1 + (t.ReturnPercent / 100));
-                if (equity > peak) peak = equity;
-                var drawdown = (equity - peak) / peak * 100;
-                if (drawdown < worstDrawdown) worstDrawdown = drawdown;
-            }
-            result.TotalReturnPercent = Math.Round((equity - 1) * 100, 2);
-            result.MaxDrawdownPercent = Math.Round(worstDrawdown, 2);
-
-            var firstPrice = bars.First().Close;
-            var lastPrice = bars.Last().Close;
-            result.BuyAndHoldReturnPercent = Math.Round(((lastPrice - firstPrice) / firstPrice) * 100, 2);
+            var curve = EquityCurve.Compound(trades.Select(t => t.ReturnPercent));
+            result.TotalReturnPercent = curve.TotalReturnPercent;
+            result.MaxDrawdownPercent = curve.MaxDrawdownPercent;
+            result.BuyAndHoldReturnPercent =
+                EquityCurve.BuyAndHoldReturnPercent(bars.First().Close, bars.Last().Close);
 
             return result;
         }

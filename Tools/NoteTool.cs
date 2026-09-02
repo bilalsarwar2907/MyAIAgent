@@ -1,7 +1,5 @@
-﻿using MyAIAgent.Services;
-using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Threading.Tasks;
+using MyAIAgent.Services;
 
 namespace MyAIAgent.Tools
 {
@@ -9,7 +7,7 @@ namespace MyAIAgent.Tools
     {
         public string Name => "SaveNote";
 
-        public string Execute(string input)
+        public async Task<string> ExecuteAsync(string input)
         {
             var folder = "Memory";
 
@@ -20,11 +18,7 @@ namespace MyAIAgent.Tools
 
             var path = Path.Combine(folder, "notes.txt");
 
-            File.AppendAllText
-            (
-                path,
-                input + Environment.NewLine
-            );
+            await File.AppendAllTextAsync(path, input + Environment.NewLine);
 
             return "Note saved successfully";
         }

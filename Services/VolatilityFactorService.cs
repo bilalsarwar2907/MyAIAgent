@@ -1,4 +1,6 @@
-﻿namespace MyAIAgent.Services
+﻿using MyAIAgent.Common;
+
+namespace MyAIAgent.Services
 {
     /// <summary>
     /// Per-stock result enriched with volatility metrics.
@@ -58,16 +60,16 @@
     ///
     /// Uses the LOCKED BacktestEngine — no changes to the core simulation.
     /// </summary>
-    public class VolatilityFactorService
+    public class VolatilityFactorService : IVolatilityFactorService
     {
-        private readonly HistoricalDataService _data;
-        private readonly BacktestEngine _engine;
+        private readonly IHistoricalDataService _data;
+        private readonly IBacktestEngine _engine;
 
         // Bucket thresholds (annualised %, decided before seeing results)
         private const decimal LowVolCeiling = 25m;
         private const decimal MediumVolCeiling = 50m;
 
-        public VolatilityFactorService(HistoricalDataService data, BacktestEngine engine)
+        public VolatilityFactorService(IHistoricalDataService data, IBacktestEngine engine)
         {
             _data = data;
             _engine = engine;
@@ -218,11 +220,7 @@
 
                 if (stocks.Count == 0) continue;
 
-                var advantages = stocks.Select(s => s.Advantage).OrderBy(x => x).ToList();
-                int mid = advantages.Count / 2;
-                decimal median = advantages.Count % 2 == 0
-                    ? Math.Round((advantages[mid - 1] + advantages[mid]) / 2, 1)
-                    : Math.Round(advantages[mid], 1);
+                decimal median = Stats.Median(stocks.Select(s => s.Advantage), round: 1);
 
                 result.Add(new VolatilityBucketSummary
                 {

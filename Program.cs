@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using MyAIAgent.Configuration;
 using MyAIAgent.Models;
 using MyAIAgent.Services;
 using MyAIAgent.Tools;
@@ -10,35 +11,82 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // =====================
+// CONFIGURATION (typed options — no secrets in source)
+// =====================
+builder.Services.Configure<AlphaVantageOptions>(
+    builder.Configuration.GetSection(AlphaVantageOptions.SectionName));
+builder.Services.Configure<OllamaOptions>(
+    builder.Configuration.GetSection(OllamaOptions.SectionName));
+builder.Services.Configure<TradingOptions>(
+    builder.Configuration.GetSection(TradingOptions.SectionName));
+
+// =====================
 // DATABASE
 // =====================
+var connectionString = builder.Configuration.GetConnectionString("AppDb")
+    ?? "Data Source=app.db";
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=app.db"));
+    options.UseSqlite(connectionString));
+
+// =====================
+// HTTP CLIENTS (pooled via IHttpClientFactory — no socket exhaustion)
+// =====================
+builder.Services.AddHttpClient("alphavantage", c =>
+    c.Timeout = TimeSpan.FromSeconds(30));
+
+builder.Services.AddHttpClient("yahoo", c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(20);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+        "AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/124.0 Safari/537.36");
+});
+
+builder.Services.AddHttpClient("ollama", (sp, c) =>
+{
+    var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<OllamaOptions>>().Value;
+    c.Timeout = TimeSpan.FromMinutes(opts.TimeoutMinutes);
+});
 
 // =====================
 // SERVICES & TOOLS
 // =====================
-builder.Services.AddScoped<AIService>();
-builder.Services.AddSingleton<ITool, NoteTool>();
-builder.Services.AddSingleton<ITool, StockTool>();
-builder.Services.AddSingleton<ITool, StockAnalysisTool>();
-builder.Services.AddSingleton<ITool, NewsTool>();
-builder.Services.AddSingleton<ITool, BacktestTool>();
-builder.Services.AddSingleton<ITool>(
-    new MyAIAgent.Tools.StockResearchTool(
-        new MyAIAgent.Services.ResearchService(
-            new MyAIAgent.Services.HistoricalDataService())));
-
-// Volatility factor research
+// Register each service once, then expose its interface as a forwarding
+// registration so both the concrete type and the abstraction resolve to the
+// same instance during this refactor.
 builder.Services.AddScoped<HistoricalDataService>();
+builder.Services.AddScoped<IHistoricalDataService>(sp => sp.GetRequiredService<HistoricalDataService>());
+
 builder.Services.AddScoped<BacktestEngine>();
+builder.Services.AddScoped<IBacktestEngine>(sp => sp.GetRequiredService<BacktestEngine>());
+
+builder.Services.AddScoped<ResearchService>();
+builder.Services.AddScoped<IResearchService>(sp => sp.GetRequiredService<ResearchService>());
+
 builder.Services.AddScoped<VolatilityFactorService>();
+builder.Services.AddScoped<IVolatilityFactorService>(sp => sp.GetRequiredService<VolatilityFactorService>());
+
 builder.Services.AddScoped<ScreenerService>();
+builder.Services.AddScoped<IScreenerService>(sp => sp.GetRequiredService<ScreenerService>());
+
 builder.Services.AddScoped<PaperPortfolioService>();
+builder.Services.AddScoped<IPaperPortfolioService>(sp => sp.GetRequiredService<PaperPortfolioService>());
+
+builder.Services.AddScoped<AIService>();
+builder.Services.AddScoped<IAiService>(sp => sp.GetRequiredService<AIService>());
+
+builder.Services.AddScoped<ITool, NoteTool>();
+builder.Services.AddScoped<ITool, StockTool>();
+builder.Services.AddScoped<ITool, StockAnalysisTool>();
+builder.Services.AddScoped<ITool, NewsTool>();
+builder.Services.AddScoped<ITool, BacktestTool>();
+builder.Services.AddScoped<ITool, StockResearchTool>();
 
 // =====================
-// SWAGGER
+// MVC CONTROLLERS + SWAGGER
 // =====================
+builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -71,6 +119,7 @@ using (var scope = app.Services.CreateScope())
 app.UseCors("VueClient");
 app.UseSwagger();
 app.UseSwaggerUI();
+app.MapControllers();
 
 // =====================
 // HEALTH CHECK
@@ -251,7 +300,7 @@ app.MapPost("/alerts/check/{userName}", async (string userName, AppDbContext db,
     foreach (var group in symbolGroups)
     {
         var symbol = group.Key;
-        var raw = stockTool.Execute(symbol);
+        var raw = await stockTool.ExecuteAsync(symbol);
 
         // Extract price from formatted string "💰 Price: $291.13"
         var match = System.Text.RegularExpressions.Regex.Match(raw, @"Price:\s*\$?([\d.]+)");
@@ -292,35 +341,36 @@ app.MapPost("/alerts/check/{userName}", async (string userName, AppDbContext db,
 //====================================
 //QUCIK DECISION ON A STOCK IN A TABLE
 //====================================
-app.MapGet("/decision/{symbol}", (string symbol, IEnumerable<ITool> tools) =>
+app.MapGet("/decision/{symbol}", async (string symbol, IEnumerable<ITool> tools) =>
 {
     var analysisTool = tools.FirstOrDefault(t => t.Name == "AnalyzeStock") as StockAnalysisTool;
     if (analysisTool == null) return Results.Problem("Analysis tool not available.");
 
-    var table = analysisTool.BuildDecisionTable(symbol.Trim().ToUpper());
+    var table = await analysisTool.BuildDecisionTableAsync(symbol.Trim().ToUpper());
     return Results.Ok(table);
 });
 
 //============================
 // QUICK NEWS HEADLINES
 //============================
-app.MapGet("/news/{symbol}", (string symbol, IEnumerable<ITool> tools) =>
+app.MapGet("/news/{symbol}", async (string symbol, IEnumerable<ITool> tools) =>
 {
     var newsTool = tools.FirstOrDefault(t => t.Name == "GetStockNews");
     if (newsTool == null) return Results.Problem("News tool not available.");
-    var result = newsTool.Execute(symbol);
+    var result = await newsTool.ExecuteAsync(symbol);
     return Results.Ok(new { symbol = symbol.ToUpper(), result });
 });
 
 // ========================
 // HISTORICAL BACKTEST ENGINE (Stooq-free, no 25/day cap)
+// backtestEngine + historicalData + researchService are now resolved per-request
+// from DI (see the IBacktestEngine / IHistoricalDataService / IResearchService
+// parameters on each endpoint below) instead of a shared hand-built instance.
 // ========================
-var historicalData = new MyAIAgent.Services.HistoricalDataService();
-var backtestEngine = new MyAIAgent.Services.BacktestEngine(historicalData);
 
 // GET /backtest/large
 // Runs all 60 symbols across 10 sectors — no trend filter.
-app.MapGet("/backtest/large", async () =>
+app.MapGet("/backtest/large", async (IBacktestEngine backtestEngine) =>
 {
     var summary = await backtestEngine.RunBatchAsync(StockUniverse.All);
     return Results.Text(backtestEngine.FormatReport(summary), "text/plain");
@@ -330,7 +380,7 @@ app.MapGet("/backtest/large", async () =>
 // Same 60 symbols with 200-day MA trend filter (Experiment B).
 // Skips RSI<30 entries when price is above the 200-day MA.
 // Compare output against /backtest/large to measure the filter's effect.
-app.MapGet("/backtest/large-filtered", async () =>
+app.MapGet("/backtest/large-filtered", async (IBacktestEngine backtestEngine) =>
 {
     var summary = await backtestEngine.RunBatchAsync(StockUniverse.All, useTrendFilter: true);
     return Results.Text(backtestEngine.FormatReport(summary), "text/plain");
@@ -344,7 +394,7 @@ app.MapGet("/backtest/large-filtered", async () =>
 
 // GET /backtest/period/{fromYear}/{toYear}
 // Example: GET http://localhost:60363/backtest/period/2006/2016
-app.MapGet("/backtest/period/{fromYear}/{toYear}", async (int fromYear, int toYear) =>
+app.MapGet("/backtest/period/{fromYear}/{toYear}", async (int fromYear, int toYear, IBacktestEngine backtestEngine) =>
 {
     var from = new DateTime(fromYear, 1, 1);
     var to = new DateTime(toYear, 12, 31);
@@ -355,7 +405,7 @@ app.MapGet("/backtest/period/{fromYear}/{toYear}", async (int fromYear, int toYe
 // GET /backtest/period/{fromYear}/{toYear}/sector/{sectorName}
 // Example: GET http://localhost:60363/backtest/period/2006/2016/sector/airlines
 app.MapGet("/backtest/period/{fromYear}/{toYear}/sector/{sectorName}",
-    async (int fromYear, int toYear, string sectorName) =>
+    async (int fromYear, int toYear, string sectorName, IBacktestEngine backtestEngine) =>
     {
         if (!StockUniverse.BySector.TryGetValue(sectorName.ToLower(), out var symbols))
             return Results.Text(
@@ -371,7 +421,7 @@ app.MapGet("/backtest/period/{fromYear}/{toYear}/sector/{sectorName}",
 // GET /backtest/sector-v2/{sectorName}
 // Available sectors: tech, banks, auto, pharma, energy, retail, utilities, reits, airlines, industrial
 // Append ?filtered=true to run with the 200-day MA trend filter.
-app.MapGet("/backtest/sector-v2/{sectorName}", async (string sectorName, bool filtered = false) =>
+app.MapGet("/backtest/sector-v2/{sectorName}", async (string sectorName, IBacktestEngine backtestEngine, bool filtered = false) =>
 {
     if (!StockUniverse.BySector.TryGetValue(sectorName.ToLower(), out var symbols))
         return Results.Text(
@@ -386,34 +436,30 @@ app.MapGet("/backtest/sector-v2/{sectorName}", async (string sectorName, bool fi
 // LEGACY BACKTEST (Alpha Vantage, ~100 days, 25 req/day cap)
 // Keep these for the AI chat tools — they still use Alpha Vantage for live signals.
 // ========================
-app.MapGet("/backtest/{symbol}", (string symbol, IEnumerable<ITool> tools) =>
+app.MapGet("/backtest/{symbol}", async (string symbol, IEnumerable<ITool> tools) =>
 {
     var backtestTool = tools.FirstOrDefault(t => t.Name == "BacktestStrategy");
     if (backtestTool == null) return Results.Problem("Backtest tool not available.");
-    return Results.Ok(new { symbol = symbol.ToUpper(), result = backtestTool.Execute(symbol) });
+    return Results.Ok(new { symbol = symbol.ToUpper(), result = await backtestTool.ExecuteAsync(symbol) });
 });
 
-app.MapGet("/backtest/sector/{sectorName}", (string sectorName, IEnumerable<ITool> tools) =>
+app.MapGet("/backtest/sector/{sectorName}", async (string sectorName, IEnumerable<ITool> tools) =>
 {
     var backtestTool = tools.FirstOrDefault(t => t.Name == "BacktestStrategy") as BacktestTool;
     if (backtestTool == null) return Results.Problem("Backtest tool not available.");
-    return Results.Ok(new { sector = sectorName, result = backtestTool.ExecuteSector(sectorName) });
+    return Results.Ok(new { sector = sectorName, result = await backtestTool.ExecuteSectorAsync(sectorName) });
 });
 
 // ========================
 // RESEARCH PLATFORM ENDPOINTS
-// Add these alongside your existing backtest endpoints in Program.cs.
+// researchService is resolved per-request via the IResearchService parameter.
 // ========================
-
-var researchService = new MyAIAgent.Services.ResearchService(historicalData);
-// Note: historicalData is already declared above with the backtest endpoints —
-// don't declare it again. researchService reuses the same instance.
 
 // GET /research/{symbol}
 // Plain-text strategy comparison report for a single symbol.
 // Example: GET http://localhost:60363/research/AAPL
 // Example: GET http://localhost:60363/research/XOM
-app.MapGet("/research/{symbol}", async (string symbol) =>
+app.MapGet("/research/{symbol}", async (string symbol, IResearchService researchService) =>
 {
     var strategies = new List<MyAIAgent.Services.IStrategy>
     {
@@ -430,7 +476,7 @@ app.MapGet("/research/{symbol}", async (string symbol) =>
 // data into AIService.InterpretResearch, returning a plain-English explanation.
 // Called by the "Explain these results" button in ResearchPanel.
 // Does NOT touch conversation history -- no sidebar pollution.
-app.MapGet("/research/{symbol}/explain", async (string symbol, AIService ai, IEnumerable<ITool> tools) =>
+app.MapGet("/research/{symbol}/explain", async (string symbol, IAiService ai, IResearchService researchService, IEnumerable<ITool> tools) =>
 {
     var strategies = new List<MyAIAgent.Services.IStrategy>
     {
@@ -445,7 +491,7 @@ app.MapGet("/research/{symbol}/explain", async (string symbol, AIService ai, IEn
 
     var researchTool = tools.FirstOrDefault(t => t.Name == "ResearchStock") as MyAIAgent.Tools.StockResearchTool;
     var prompt = researchTool != null
-        ? researchTool.Execute(symbol)
+        ? await researchTool.ExecuteAsync(symbol)
         : researchService.FormatForAI(report);
 
     var explanation = await ai.InterpretResearch(prompt);
@@ -455,7 +501,7 @@ app.MapGet("/research/{symbol}/explain", async (string symbol, AIService ai, IEn
 // GET /research/batch/{sector}
 // Research report for a full sector â all symbols side by side.
 // Example: GET http://localhost:60363/research/batch/energy
-app.MapGet("/research/batch/{sector}", async (string sector) =>
+app.MapGet("/research/batch/{sector}", async (string sector, IResearchService researchService) =>
 {
     if (!MyAIAgent.Services.StockUniverse.BySector.TryGetValue(sector.ToLower(), out var symbols))
         return Results.Text(
@@ -488,7 +534,7 @@ app.MapGet("/research/batch/{sector}", async (string sector) =>
 // Aggregates research results for all stocks in a sector.
 // Returns a structured JSON summary — consumed by SectorResearchPanel.vue.
 // Example: GET http://localhost:60363/research/sector/energy
-app.MapGet("/research/sector/{sectorName}", async (string sectorName) =>
+app.MapGet("/research/sector/{sectorName}", async (string sectorName, IResearchService researchService) =>
 {
     if (!MyAIAgent.Services.StockUniverse.BySector.TryGetValue(sectorName.ToLower(), out var symbols))
         return Results.Json(new { error = $"Unknown sector '{sectorName}'. Available: {string.Join(", ", MyAIAgent.Services.StockUniverse.BySector.Keys)}" });
@@ -535,16 +581,7 @@ app.MapGet("/research/sector/{sectorName}", async (string sectorName) =>
         });
     }
 
-    // Median helper
-    decimal medianAdvantage = 0;
-    if (advantages.Count > 0)
-    {
-        var sorted = advantages.OrderBy(x => x).ToList();
-        int mid = sorted.Count / 2;
-        medianAdvantage = sorted.Count % 2 != 0
-            ? sorted[mid]
-            : Math.Round((sorted[mid - 1] + sorted[mid]) / 2, 2);
-    }
+    decimal medianAdvantage = MyAIAgent.Common.Stats.Median(advantages);
 
     return Results.Json(new
     {
@@ -563,7 +600,7 @@ app.MapGet("/research/sector/{sectorName}", async (string sectorName) =>
 // Runs every sector and returns an aggregated summary table.
 // Used by SectorResearchPanel.vue for the full market overview.
 // Takes ~3-4 minutes for all 10 sectors × 6 stocks. Run once, cache mentally.
-app.MapGet("/research/all-sectors", async () =>
+app.MapGet("/research/all-sectors", async (IResearchService researchService) =>
 {
     var strategies = new List<MyAIAgent.Services.IStrategy>
     {
@@ -601,15 +638,7 @@ app.MapGet("/research/all-sectors", async () =>
             if (adv < worstAdv) { worstAdv = adv; worstSymbol = symbol; }
         }
 
-        decimal median = 0;
-        if (advantages.Count > 0)
-        {
-            var sorted = advantages.OrderBy(x => x).ToList();
-            int mid = sorted.Count / 2;
-            median = sorted.Count % 2 != 0
-                ? sorted[mid]
-                : Math.Round((sorted[mid - 1] + sorted[mid]) / 2, 2);
-        }
+        decimal median = MyAIAgent.Common.Stats.Median(advantages);
 
         sectorSummaries.Add(new
         {
@@ -641,7 +670,7 @@ app.MapGet("/research/all-sectors", async () =>
 // Hypothesis: RSI works better on weak-trend stocks than strong-trend stocks.
 // GET /research/factor/trend-strength
 // ========================
-app.MapGet("/research/factor/trend-strength", async () =>
+app.MapGet("/research/factor/trend-strength", async (IResearchService researchService) =>
 {
     var strategies = new List<MyAIAgent.Services.IStrategy>
     {
@@ -665,9 +694,7 @@ app.MapGet("/research/factor/trend-strength", async () =>
         bool beat = rsiReturn > bahReturn;
 
         // Trend bucket based on buy-and-hold return over the 10y period
-        string trendBucket = bahReturn < 100 ? "Weak (<100%)"
-                           : bahReturn < 300 ? "Medium (100–300%)"
-                                              : "Strong (>300%)";
+        string trendBucket = MyAIAgent.Common.TrendBucket.For(bahReturn);
 
         perStock.Add(new
         {
@@ -683,7 +710,12 @@ app.MapGet("/research/factor/trend-strength", async () =>
     }
 
     // Group into buckets and compute stats
-    var buckets = new[] { "Weak (<100%)", "Medium (100–300%)", "Strong (>300%)" };
+    var buckets = new[]
+    {
+        MyAIAgent.Common.TrendBucket.Weak,
+        MyAIAgent.Common.TrendBucket.Medium,
+        MyAIAgent.Common.TrendBucket.Strong
+    };
     var bucketStats = buckets.Select(bucket =>
     {
         var stocks = perStock.Cast<dynamic>().Where(s => s.trendBucket == bucket).ToList();
@@ -691,11 +723,8 @@ app.MapGet("/research/factor/trend-strength", async () =>
 
         int total = stocks.Count;
         int beatCount = stocks.Count(s => (bool)s.beat);
-        var advList = stocks.Select(s => (decimal)s.advantage).OrderBy(x => x).ToList();
-        int mid = advList.Count / 2;
-        decimal median = advList.Count % 2 != 0
-            ? advList[mid]
-            : Math.Round((advList[mid - 1] + advList[mid]) / 2, 1);
+        decimal median = MyAIAgent.Common.Stats.Median(
+            ((IEnumerable<dynamic>)stocks).Select(s => (decimal)s.advantage), round: 1);
 
         return (object)new
         {
@@ -726,7 +755,7 @@ app.MapGet("/research/factor/trend-strength", async () =>
 // Example: GET /research/factor/trend-strength/2006/2016
 // ========================
 app.MapGet("/research/factor/trend-strength/{fromYear}/{toYear}",
-    async (int fromYear, int toYear) =>
+    async (int fromYear, int toYear, IHistoricalDataService historicalData) =>
     {
         var from = new DateTime(fromYear, 1, 1);
         var to = new DateTime(toYear, 12, 31);
@@ -755,16 +784,12 @@ app.MapGet("/research/factor/trend-strength/{fromYear}/{toYear}",
             var rsiStrategy = new MyAIAgent.Services.RsiStrategy(30, 70);
             var trades = rsiStrategy.Run(bars);
 
-            decimal equity = 1;
-            foreach (var t in trades)
-                equity *= (1 + t.ReturnPercent / 100);
-            decimal rsiReturn = Math.Round((equity - 1) * 100, 2);
+            decimal rsiReturn = MyAIAgent.Common.EquityCurve
+                .Compound(trades.Select(t => t.ReturnPercent)).TotalReturnPercent;
             decimal advantage = Math.Round(rsiReturn - bahReturn, 2);
             bool beat = rsiReturn > bahReturn;
 
-            string trendBucket = bahReturn < 100 ? "Weak (<100%)"
-                               : bahReturn < 300 ? "Medium (100–300%)"
-                                                  : "Strong (>300%)";
+            string trendBucket = MyAIAgent.Common.TrendBucket.For(bahReturn);
 
             perStock.Add(new
             {
@@ -781,7 +806,12 @@ app.MapGet("/research/factor/trend-strength/{fromYear}/{toYear}",
             });
         }
 
-        var buckets = new[] { "Weak (<100%)", "Medium (100–300%)", "Strong (>300%)" };
+        var buckets = new[]
+        {
+            MyAIAgent.Common.TrendBucket.Weak,
+            MyAIAgent.Common.TrendBucket.Medium,
+            MyAIAgent.Common.TrendBucket.Strong
+        };
         var bucketStats = buckets.Select(bucket =>
         {
             var stocks = perStock.Cast<dynamic>().Where(s => s.trendBucket == bucket).ToList();
@@ -789,11 +819,8 @@ app.MapGet("/research/factor/trend-strength/{fromYear}/{toYear}",
 
             int total = stocks.Count;
             int beatCount = stocks.Count(s => (bool)s.beat);
-            var advList = stocks.Select(s => (decimal)s.advantage).OrderBy(x => x).ToList();
-            int mid = advList.Count / 2;
-            decimal median = advList.Count % 2 != 0
-                ? advList[mid]
-                : Math.Round((advList[mid - 1] + advList[mid]) / 2, 1);
+            decimal median = MyAIAgent.Common.Stats.Median(
+                ((IEnumerable<dynamic>)stocks).Select(s => (decimal)s.advantage), round: 1);
 
             return (object)new
             {
@@ -825,16 +852,16 @@ app.MapGet("/research/factor/trend-strength/{fromYear}/{toYear}",
 // ========================
 // QUICK STOCK PRICE
 // ========================
-app.MapGet("/stock/{symbol}", (string symbol, IEnumerable<ITool> tools) =>
+app.MapGet("/stock/{symbol}", async (string symbol, IEnumerable<ITool> tools) =>
 {
     var stockTool = tools.FirstOrDefault(t => t.Name == "GetStockPrice");
     if (stockTool == null) return Results.Problem("Stock tool not available.");
-    return Results.Ok(new { symbol = symbol.ToUpper(), result = stockTool.Execute(symbol) });
+    return Results.Ok(new { symbol = symbol.ToUpper(), result = await stockTool.ExecuteAsync(symbol) });
 });
 // =====================
 // DEEP STOCK ANALYSIS
 // =====================
-app.MapPost("/analyze", async (AnalyzeRequest request, AIService ai, IEnumerable<ITool> tools) =>
+app.MapPost("/analyze", async (AnalyzeRequest request, IAiService ai, IEnumerable<ITool> tools) =>
 {
     if (string.IsNullOrWhiteSpace(request.Symbols))
         return Results.BadRequest("Symbols are required.");
@@ -842,7 +869,7 @@ app.MapPost("/analyze", async (AnalyzeRequest request, AIService ai, IEnumerable
     var analysisTool = tools.FirstOrDefault(t => t.Name == "AnalyzeStock");
     if (analysisTool == null) return Results.Problem("Analysis tool not available.");
 
-    var stockData = analysisTool.Execute(request.Symbols);
+    var stockData = await analysisTool.ExecuteAsync(request.Symbols);
     var userQuestion = string.IsNullOrWhiteSpace(request.Question)
         ? "Analyze these stocks and tell me which looks strongest right now."
         : request.Question;
@@ -861,7 +888,7 @@ app.MapPost("/analyze", async (AnalyzeRequest request, AIService ai, IEnumerable
 // =====================
 // CHAT
 // =====================
-app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITool> tools) =>
+app.MapPost("/chat", async (ChatRequestV2 request, IAiService ai, IEnumerable<ITool> tools) =>
 {
     if (string.IsNullOrWhiteSpace(request.Message))
         return Results.BadRequest("Message cannot be empty.");
@@ -920,7 +947,7 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
             var analysisTool = tools.FirstOrDefault(t => t.Name == "AnalyzeStock");
             if (analysisTool != null)
             {
-                var stockData = analysisTool.Execute(extractedInput);
+                var stockData = await analysisTool.ExecuteAsync(extractedInput);
                 var analysis = await ai.AnalyzeStocks(stockData, request.Message);
                 await ai.SaveToolMessage(request.Message, analysis, request.ConversationId, request.UserName);
                 return Results.Ok(new
@@ -940,7 +967,7 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
             var analysisTool = tools.FirstOrDefault(t => t.Name == "AnalyzeStock");
             if (analysisTool != null)
             {
-                var stockData = analysisTool.Execute(toolDecision.ToolInput);
+                var stockData = await analysisTool.ExecuteAsync(toolDecision.ToolInput);
                 var analysis = await ai.AnalyzeStocks(stockData, request.Message);
                 await ai.SaveToolMessage(request.Message, analysis, request.ConversationId, request.UserName);
                 return Results.Ok(new
@@ -962,7 +989,7 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
             var tool = tools.FirstOrDefault(t => t.Name == toolDecision.ToolName);
             if (tool != null)
             {
-                var result = tool.Execute(toolDecision.ToolInput);
+                var result = await tool.ExecuteAsync(toolDecision.ToolInput);
 
                 await ai.SaveToolMessage(request.Message, result, request.ConversationId, request.UserName);
 
@@ -985,7 +1012,7 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
             var tool = tools.FirstOrDefault(t => t.Name == toolDecision.ToolName);
             if (tool != null)
             {
-                var result = tool.Execute(toolDecision.ToolInput);
+                var result = await tool.ExecuteAsync(toolDecision.ToolInput);
 
                 await ai.SaveToolMessage(request.Message, result, request.ConversationId, request.UserName);
 
@@ -1007,7 +1034,7 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
             var tool = tools.FirstOrDefault(t => t.Name == "GetStockNews");
             if (tool != null)
             {
-                var result = tool.Execute(toolDecision.ToolInput);
+                var result = await tool.ExecuteAsync(toolDecision.ToolInput);
 
                 await ai.SaveToolMessage(request.Message, result, request.ConversationId, request.UserName);
 
@@ -1059,7 +1086,7 @@ app.MapPost("/chat", async (ChatRequestV2 request, AIService ai, IEnumerable<ITo
 
             if (tool != null)
             {
-                var researchPrompt = tool.Execute(symbol);
+                var researchPrompt = await tool.ExecuteAsync(symbol);
                 var explanation = await ai.InterpretResearch(researchPrompt);
 
                 await ai.SaveToolMessage(
@@ -1178,38 +1205,10 @@ app.MapDelete("/conversations/{userName}/{conversationId}", async (string userNa
 });
 // ========================
 // VOLATILITY FACTOR RESEARCH
-// Tests whether annualised volatility predicts RSI strategy effectiveness.
-// Hypothesis: RSI works better on low-volatility stocks than high-volatility stocks.
-// Bucket thresholds (fixed before run, no look-ahead bias):
-//   Low    : annualised vol < 25%
-//   Medium : 25% ≤ vol < 50%
-//   High   : vol ≥ 50%
+// Now served by Controllers/VolatilityController.cs (routes unchanged:
+// POST /api/volatility/run and POST /api/volatility/validate).
 // ========================
 
-// POST /api/volatility/run
-// Body: { "symbols": ["AAPL","XOM",...] }
-app.MapPost("/api/volatility/run", async (VolatilityRunRequest req, VolatilityFactorService svc) =>
-{
-    if (req?.Symbols == null || req.Symbols.Count == 0)
-        return Results.BadRequest(new { error = "Provide at least one symbol." });
-
-    var result = await svc.RunAsync(req.Symbols);
-    return Results.Json(result);
-});
-
-// POST /api/volatility/validate
-// Body: { "symbols": [...], "fromYear": 2006, "toYear": 2016 }
-app.MapPost("/api/volatility/validate", async (VolatilityValidateRequest req, VolatilityFactorService svc) =>
-{
-    if (req?.Symbols == null || req.Symbols.Count == 0)
-        return Results.BadRequest(new { error = "Provide at least one symbol." });
-
-    var from = new DateTime(req.FromYear, 1, 1);
-    var to = new DateTime(req.ToYear, 12, 31);
-
-    var result = await svc.RunRangeAsync(req.Symbols, from, to);
-    return Results.Json(result);
-});
 // ========================
 // RSI CANDIDATE SCREENER — v1
 // Applies the validated Finding #1 exclusion rule:
@@ -1305,7 +1304,7 @@ app.MapDelete("/api/paper/{tradeId}/{userName}", async (int tradeId, string user
 // FIX: Now returns currentPrice (regularMarketPrice) so Portfolio P&L works.
 // REPLACE the existing /api/screener/rsi/{symbol} endpoint in Program.cs
 // ========================
-app.MapGet("/api/screener/rsi/{symbol}", async (string symbol, HistoricalDataService data) =>
+app.MapGet("/api/screener/rsi/{symbol}", async (string symbol, IHistoricalDataService data, IHttpClientFactory httpClientFactory) =>
 {
     var sym = symbol.ToUpper().Trim();
 
@@ -1331,9 +1330,7 @@ app.MapGet("/api/screener/rsi/{symbol}", async (string symbol, HistoricalDataSer
         decimal bahReturn = Math.Round(((lastClose - firstClose) / firstClose) * 100, 1);
 
         // Trend bucket
-        string trendBucket = bahReturn < 100 ? "Weak (<100%)"
-                           : bahReturn < 300 ? "Medium (100–300%)"
-                                             : "Strong (>300%)";
+        string trendBucket = MyAIAgent.Common.TrendBucket.For(bahReturn);
 
         // Current RSI from historical closes
         var closes = bars.Select(b => b.Close).ToList();
@@ -1350,8 +1347,7 @@ app.MapGet("/api/screener/rsi/{symbol}", async (string symbol, HistoricalDataSer
         decimal? currentPrice = null;
         try
         {
-            using var http = new System.Net.Http.HttpClient();
-            http.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+            var http = httpClientFactory.CreateClient("yahoo");
             var quoteUrl = $"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d";
             var quoteRes = await http.GetAsync(quoteUrl);
             if (quoteRes.IsSuccessStatusCode)
@@ -1403,6 +1399,3 @@ app.MapGet("/api/screener/rsi/{symbol}", async (string symbol, HistoricalDataSer
 });
 
 app.Run();
-// ── Volatility request models (add at bottom of Program.cs after app.Run()) ──
-public record VolatilityRunRequest(List<string> Symbols);
-public record VolatilityValidateRequest(List<string> Symbols, int FromYear = 2006, int ToYear = 2016);
