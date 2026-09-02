@@ -20,6 +20,9 @@
 		</PackageReference>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
+		<!-- Override Swashbuckle's transitive Microsoft.OpenApi 2.4.1 (GHSA-v5pm-xwqc-g5wc,
+		     stack overflow on circular schema refs). Fixed in 2.7.5+. -->
+		<PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
 	</ItemGroup>
 	
 </Project>
