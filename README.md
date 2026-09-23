@@ -2,7 +2,8 @@
 
 **Status: work in progress — a personal "vibe coding" test case.**
 
-I built this project to test how far AI-assisted ("vibe") coding — working with Claude as a pair-programmer — could take a real C#/.NET application, not as a finished product. It's still under active development, and I'm currently waiting on live paper-trading results before drawing any conclusions about whether the trading logic actually works.
+MyAIAgent — Full-stack AI Stock Research & Paper Trading Platform (WIP)
+A personal "vibe coding" experiment to test how far AI-assisted development with Claude as a pair-programmer can take a real application. Full-stack platform with C# .NET 8 backend and Vue 3 + TypeScript frontend (chat-ui) — includes an AI chat agent for natural-language queries, RSI-based stock screener ranking 60+ stocks, backtest engine, and paper-trading portfolio with P&L tracking (simulated only, no real money). Still in progress: I am actively learning, refactoring, and in a phase where every decision is changeable. Currently waiting on live paper-trading results to evaluate if the RSI strategy actually works.
 
 ## What it is
 
