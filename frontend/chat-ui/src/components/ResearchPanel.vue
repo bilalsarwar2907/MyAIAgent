@@ -347,7 +347,7 @@ async function fetchAIExplanation() {
     } else {
       aiExplanation.value = data.explanation ?? 'No explanation returned.'
     }
-  } catch (e) {
+  } catch {
     aiExplanation.value = 'Could not fetch AI explanation.'
   } finally {
     loadingAI.value = false

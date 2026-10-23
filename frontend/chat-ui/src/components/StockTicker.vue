@@ -43,11 +43,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useWatchlistStore } from '@/stores/watchlistStore';
 import { usePortfolioStore } from '@/stores/portfolioStore';
-import { useAuthStore } from '@/stores/authStore';
 
 const watchlistStore = useWatchlistStore();
 const portfolioStore = usePortfolioStore();
-const authStore = useAuthStore();
 
 const isPaused = ref(false);
 const isRefreshing = ref(false);
@@ -86,7 +84,7 @@ const tickerItems = computed(() => {
 });
 
 const lastUpdatedLabel = computed(() => {
-  tickCount.value; // read to create reactivity dependency
+  void tickCount.value; // read to create reactivity dependency
   if (!lastUpdated.value) return 'Not refreshed yet';
   const seconds = Math.floor((Date.now() - lastUpdated.value) / 1000);
   if (seconds < 60) return 'Updated ' + seconds + 's ago';

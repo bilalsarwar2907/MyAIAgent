@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import api from '@/services/api';
+import { errorMessage } from '@/services/apiError';
 
 interface PortfolioItem {
   id: number;
@@ -76,9 +77,7 @@ export const usePortfolioStore = defineStore('portfolio', {
         return true;
 
       } catch (err: unknown) {
-        const e = err as any;
-        const data = e?.response?.data;
-        this.error = (typeof data === 'string' ? data : data?.message) || 'Failed to add holding.';
+        this.error = errorMessage(err, 'Failed to add holding.');
         return false;
       }
     },
@@ -93,7 +92,7 @@ export const usePortfolioStore = defineStore('portfolio', {
         await api.delete('/portfolio/' + id);
         this.items = this.items.filter(item => item.id !== id);
         this.calculateSummary();
-      } catch (err: unknown) {
+      } catch {
         this.error = 'Failed to remove holding.';
       }
     },

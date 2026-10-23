@@ -156,7 +156,7 @@ const checkDecision = async () => {
   try {
     const response = await api.get('/decision/' + decisionSymbol.value.trim().toUpperCase());
     decisionResult.value = response.data;
-  } catch (err) {
+  } catch {
     decisionResult.value = { error: 'Request failed. Check backend logs.' };
   } finally {
     decisionLoading.value = false;

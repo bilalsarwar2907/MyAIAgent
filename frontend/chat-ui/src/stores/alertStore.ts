@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import api from '@/services/api';
+import { errorMessage } from '@/services/apiError';
 
 interface PriceAlert {
   id: number;
@@ -69,9 +70,7 @@ export const useAlertStore = defineStore('alert', {
         return true;
 
       } catch (err: unknown) {
-        const e = err as any;
-        const data = e?.response?.data;
-        this.error = (typeof data === 'string' ? data : data?.message) || 'Failed to create alert.';
+        this.error = errorMessage(err, 'Failed to create alert.');
         return false;
       }
     },
@@ -85,7 +84,7 @@ export const useAlertStore = defineStore('alert', {
       try {
         await api.delete('/alerts/' + id);
         this.alerts = this.alerts.filter(a => a.id !== id);
-      } catch (err: unknown) {
+      } catch {
         this.error = 'Failed to remove alert.';
       }
     },

@@ -52,7 +52,9 @@
             <SectorResearchPanel      v-if="activeTab === 'sectors'" />
             <FactorResearchPanel      v-if="activeTab === 'factors'" />
             <FindingsPanel            v-if="activeTab === 'findings'" />
-            <VolatilityResearchPanel  v-if="activeTab === 'volatility'" />
+            <!-- Volatility panel disabled (tab entry is commented out below). To re-enable:
+                 import VolatilityResearchPanel, add the tab entry, and restore this line:
+                 <VolatilityResearchPanel v-if="activeTab === 'volatility'" /> -->
             <ScreenerPanel            v-if="activeTab === 'screener'" />
             <PaperPortfolioPanel      v-if="activeTab === 'paper'" />
             <AnalyticsDashboard       v-if="activeTab === 'analytics'" />

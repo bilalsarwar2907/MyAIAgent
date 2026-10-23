@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import api from '@/services/api';
+import { errorMessage, errorStatus } from '@/services/apiError';
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -30,9 +31,7 @@ export const useAuthStore = defineStore('auth', {
         await this.login(userName, password);
 
       } catch (err: unknown) {
-        const e = err as any;
-        const data = e?.response?.data;
-        this.error = (typeof data === 'string' ? data : data?.message) || 'Registration failed. Please try again.';
+        this.error = errorMessage(err, 'Registration failed. Please try again.');
         console.error('[authStore] register error:', err);
       } finally {
         this.isLoading = false;
@@ -56,12 +55,10 @@ export const useAuthStore = defineStore('auth', {
         localStorage.setItem('userName', this.userName ?? '');
 
       } catch (err: unknown) {
-        const e = err as any;
-        if (e?.response?.status === 401) {
+        if (errorStatus(err) === 401) {
           this.error = 'Invalid username or password.';
         } else {
-          const data = e?.response?.data;
-          this.error = (typeof data === 'string' ? data : data?.message) || 'Login failed. Is the backend running?';
+          this.error = errorMessage(err, 'Login failed. Is the backend running?');
         }
         console.error('[authStore] login error:', err);
       } finally {

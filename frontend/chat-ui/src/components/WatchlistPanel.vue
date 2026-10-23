@@ -359,11 +359,6 @@ function rsiClass(rsi) {
   if (rsi > 70)   return 'wl-red wl-bold'
   return ''
 }
-function statusClass(status) {
-  if (status === 'Oversold')   return 'badge--oversold'
-  if (status === 'Overbought') return 'badge--overbought'
-  return 'badge--neutral'
-}
 function trendClass(bucket) {
   if (bucket === 'Strong (>300%)') return 'wl-red'
   if (bucket === 'Weak (<100%)')   return 'wl-green'
@@ -380,11 +375,6 @@ function cardClass(item) {
   if (item.rsiStatus === 'Overbought') return 'wl-card--overbought'
   return ''
 }
-function changeClass(change) {
-  if (!change) return 'wl-muted'
-  return parseFloat(change) >= 0 ? 'wl-green' : 'wl-red'
-}
-
 onMounted(async () => {
   await loadOpenTrades(authStore.userName)
   await loadWatchlist()

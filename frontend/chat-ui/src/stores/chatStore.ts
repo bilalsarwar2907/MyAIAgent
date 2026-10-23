@@ -117,7 +117,7 @@ export const useChatStore = defineStore('chat', {
           conversationStore.loadConversations(authStore.userName);
         }
 
-      } catch (err: any) {
+      } catch (err: unknown) {
         this.error = 'Could not reach the server. Is the backend running?';
         this.messages.push({
           role: 'assistant',

@@ -1,12 +1,16 @@
 import { globalIgnores } from 'eslint/config'
-import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript'
+import {
+  configureVueProject,
+  defineConfigWithVueTs,
+  vueTsConfigs,
+} from '@vue/eslint-config-typescript'
 import pluginVue from 'eslint-plugin-vue'
 import pluginOxlint from 'eslint-plugin-oxlint'
 
-// To allow more languages other than `ts` in `.vue` files, uncomment the following lines:
-// import { configureVueProject } from '@vue/eslint-config-typescript'
-// configureVueProject({ scriptLangs: ['ts', 'tsx'] })
+// Most components here are plain-JS `<script setup>` (only the stores / api layer
+// are TypeScript), so allow both `ts` and plain `js` script blocks in `.vue` files.
 // More info at https://github.com/vuejs/eslint-config-typescript/#advanced-setup
+configureVueProject({ scriptLangs: ['ts', 'js'] })
 
 export default defineConfigWithVueTs(
   {
