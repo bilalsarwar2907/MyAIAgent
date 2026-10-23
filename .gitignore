@@ -492,6 +492,11 @@ appsettings.Development.json
 appsettings.Local.json
 appsettings.*.local.json
 
+# Local SQLite database: holds personal data (users, paper trades, chat history).
+# Never commit it — a tracked live DB can be overwritten by a stray `git checkout`.
+app.db
+app.db-journal
+
 # SQLite write-ahead-log sidecar files
 app.db-shm
 app.db-wal
