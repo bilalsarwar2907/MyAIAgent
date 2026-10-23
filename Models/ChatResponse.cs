@@ -6,6 +6,7 @@ namespace MyAIAgent.Models
 {
     public class ChatResponse
     {
-        public Message message { get; set; }
+        // Null when Ollama returns no message; AIService checks for that.
+        public Message? message { get; set; }
     }
 }

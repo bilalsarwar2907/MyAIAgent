@@ -24,6 +24,9 @@
 		<!-- Override Swashbuckle's transitive Microsoft.OpenApi 2.4.1 (GHSA-v5pm-xwqc-g5wc,
 		     stack overflow on circular schema refs). Fixed in 2.7.5+. -->
 		<PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+		<!-- Override EF Core's transitive native SQLite (2.1.11 bundles a SQLite older than
+		     3.50.2: GHSA-2m69-gcr7-jv3q, aggregate-term memory corruption). 2.1.12+ is not affected. -->
+		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.14" />
 	</ItemGroup>
 	
 </Project>
